@@ -5,13 +5,13 @@
 # mode -> OWL in the background (creates awdl0) -> OpenDrop on awdl0.
 #
 # Usage (from the repository root):
-#   sudo bash poc/airdrop-poc.sh find            # list nearby AirDrop devices
-#   sudo bash poc/airdrop-poc.sh receive         # be visible, accept files
-#   sudo bash poc/airdrop-poc.sh send FILE       # discover for 30 s, send to device 0
+#   sudo bash scripts/airdrop-poc.sh find            # list nearby AirDrop devices
+#   sudo bash scripts/airdrop-poc.sh receive         # be visible, accept files
+#   sudo bash scripts/airdrop-poc.sh send FILE       # discover for 30 s, send to device 0
 #
 # The Apple device must have AirDrop set to "Everyone".
 # Stop with Ctrl+C: Wi-Fi is always restored and the hotspot profile removed.
-# Logs: poc/out/ (git-ignored). Received files land in poc/out/received/.
+# Logs: out/ (git-ignored). Received files land in out/received/.
 set -u
 
 IFACE=${IFACE:-wlp2s0}
@@ -21,7 +21,7 @@ FIND_SECONDS=${FIND_SECONDS:-30}
 HOTSPOT_NAME=poc-hotspot
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-OUT_DIR="$REPO/poc/out"
+OUT_DIR="$REPO/out"
 OPENDROP="$REPO/.venv/bin/opendrop"
 OWL_LOG="$OUT_DIR/owl.log"
 
