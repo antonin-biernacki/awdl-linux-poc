@@ -30,7 +30,7 @@ plantage côté réseau ne doit jamais figer GNOME Shell.
 
 - **Matériel** : AWDL exige une carte Wi-Fi qui accepte le mode moniteur **et**
   l'injection de trames. Beaucoup de cartes intégrées ne le permettent pas. Voir
-  la documentation matérielle.
+  [docs/hardware.md](docs/hardware.md) pour vérifier sa carte et la liste des cartes testées.
 - **Visibilité côté Apple** : sans certificat signé par Apple, un Mac ou un iPhone ne
   voit poc que s'il est réglé sur « Tout le monde ».
 - **Wi-Fi** : pendant un transfert, la carte est dédiée à AWDL. Selon le matériel, la
