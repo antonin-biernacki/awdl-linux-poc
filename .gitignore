@@ -8,20 +8,6 @@ dist/
 .venv/
 venv/
 
-# Test and lint caches
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
-
-# GNOME extension build artifacts
-*.shell-extension.zip
-extension/**/schemas/gschemas.compiled
-
-# JavaScript tooling
-node_modules/
-
 # Editors and OS
 .vscode/
 .idea/
@@ -30,4 +16,4 @@ node_modules/
 .DS_Store
 
 # Proof of concept outputs (logs, received files)
-poc/out/
+out/
