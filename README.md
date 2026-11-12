@@ -3,10 +3,10 @@
 Preuve de concept : savoir si ce PC (Fedora, carte Wi-Fi Realtek RTL8852BE) peut
 échanger des fichiers en **vrai AirDrop** avec un iPhone, sans application côté Apple.
 
-Ce dépôt ne contient pas de produit fini. Il rassemble les essais, leurs résultats,
-les contournements trouvés et un script pour refaire le test.
+Ce dépôt ne contient pas de produit fini. J'y rassemble mes essais, leurs résultats,
+les contournements que j'ai trouvés et un script pour refaire le test.
 
-## Où on en est
+## Où j'en suis
 
 | Étape | État |
 |-------|------|
@@ -17,7 +17,7 @@ les contournements trouvés et un script pour refaire le test.
 | Recevoir un fichier depuis l'iPhone (`receive`) | À tester |
 | Envoyer un fichier vers l'iPhone (`send`) | À tester |
 
-La couche basse (AWDL) fonctionne. Il reste à valider la couche AirDrop elle-même,
+La couche basse (AWDL) fonctionne. Il me reste à valider la couche AirDrop elle-même,
 avec un vrai transfert.
 
 ## Comment marche AirDrop
@@ -47,7 +47,7 @@ AirDrop ouverte pour activer AWDL et voir le PC.
 - Fedora 44, noyau 7.2.15
 - Carte Wi-Fi Realtek **RTL8852BE** (PCIe, 802.11ax), pilote `rtw89_8852be`,
   firmware 0.29.29.18 (`linux-firmware-20261019`), interface `wlp2s0`
-- iPhone réglé sur AirDrop « Tout le monde »
+- mon iPhone, réglé sur AirDrop « Tout le monde »
 
 ## Ce qu'il faut à la carte Wi-Fi
 
@@ -76,9 +76,9 @@ iw list | grep -E "\[(6|44|149)\]"
 sudo aireplay-ng --test wlp2s0
 ```
 
-## Ce qu'on a testé
+## Ce que j'ai testé
 
-Les essais sont listés dans l'ordre. Les scripts correspondants sont dans
+J'ai mené les essais dans l'ordre ci-dessous. Les scripts correspondants sont dans
 `scripts/diagnostics/`.
 
 | # | Essai | Résultat | Conclusion |
@@ -89,16 +89,16 @@ Les essais sont listés dans l'ordre. Les scripts correspondants sont dans
 | 4 | OWL en mode moniteur simple (`-N`), canal 149 | OWL démarre, `awdl0` créé, aucun pair | L'iPhone n'est pas vu |
 | 5 | Scan passif sur 6 / 44 / 149 / 157 | 157 : ~900 trames ; les autres : 0 à 1 | La carte ne reçoit pas sur ces canaux |
 | 6 | Réception canal par canal (6, 11, 48, 112, 149, 157) | Seul le 157 reçoit, alors que des AP émettent sur 6, 48 et 112 | **Bug confirmé** : en mode moniteur, la carte ne reçoit que sur le canal où le firmware travaillait juste avant |
-| 7 | Point d'accès éphémère sur le canal, puis mode moniteur | Réception OK sur 149, 44 et 6 ; trames AWDL décodées par `tshark` | Contournement trouvé |
+| 7 | Point d'accès éphémère sur le canal, puis mode moniteur | Réception OK sur 149, 44 et 6 ; trames AWDL décodées par `tshark` | J'ai trouvé un contournement |
 | 8 | OWL avec les deux contournements, canal 149 | **`add peer`**, synchronisation AWDL avec l'iPhone | La chaîne AWDL marche sur cette carte |
 
 Remarques :
 
 - Un filtre `tcpdump` écrit à la main pour les trames AWDL ne trouvait rien. Le
-  dissecteur `awdl` de `tshark` (paquet `wireshark-cli`) les trouve. Il vaut mieux
-  utiliser `tshark`.
+  dissecteur `awdl` de `tshark` (paquet `wireshark-cli`) les trouve. J'utilise donc
+  `tshark`.
 - Les appareils Apple utilisent des adresses MAC aléatoires et des noms d'hôte en UUID :
-  on ne sait pas toujours quel appareil est le sien.
+  je ne peux pas toujours savoir lequel est mon iPhone.
 - L'iPhone suivait la séquence de canaux 48 / 149 / 6. OWL reste sur un seul canal
   (le 149), ce qui suffit pour se synchroniser.
 
@@ -152,7 +152,7 @@ Points connus :
 
 - `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` est nécessaire avec CMake 4, à cause des
   sous-modules d'OWL ;
-- on compile seulement la cible `owl` : les tests d'OWL (googletest) ne compilent plus
+- je compile seulement la cible `owl` : les tests d'OWL (googletest) ne compilent plus
   avec un GCC récent, ce qui n'affecte pas le binaire ;
 - `setuptools<81` est nécessaire parce qu'OpenDrop importe encore `pkg_resources`, qui
   n'existe plus dans les environnements Python récents (testé avec Python 3.14) ;
@@ -197,8 +197,8 @@ dans `~/.opendrop/`.
 
 ### Scripts de diagnostic
 
-Conservés pour référence dans `scripts/diagnostics/`. Ils contiennent des chemins
-propres à la machine de développement.
+Je les garde pour référence dans `scripts/diagnostics/`. Ils contiennent des chemins
+propres à ma machine.
 
 | Script | Rôle |
 |--------|------|
@@ -211,7 +211,7 @@ propres à la machine de développement.
 ## Limites
 
 - **Matériel** : peu de cartes intégrées gèrent le mode moniteur avec injection. Sur
-  celle-ci, il faut deux contournements non documentés.
+  la mienne, il faut deux contournements non documentés.
 - **Wi-Fi coupé** pendant qu'AWDL tourne, parce que la carte lui est dédiée.
 - **Côté Apple** : sans certificat signé par Apple, l'iPhone ne voit le PC qu'en mode
   « Tout le monde ». Ce mode se désactive seul au bout de 10 minutes.
@@ -221,24 +221,5 @@ propres à la machine de développement.
 
 Pour une carte qui marche sans contournement, il faut le mode moniteur actif. L'équipe
 d'OWL a développé avec une **Atheros AR9280** (`ath9k`). Côté clés USB, la
-**MediaTek MT7612U** (`mt76`, 2,4 et 5 GHz) est réputée compatible, mais n'a pas été
-testée ici.
-
-## Alternative plus simple : LocalSend
-
-Si le but est seulement d'échanger des fichiers entre iPhone et Linux,
-[LocalSend](https://localsend.org/) évite tout ce qui précède. Il faut l'application
-sur les deux appareils. Elle passe par le réseau local (même Wi-Fi), avec découverte en
-UDP multicast et transfert HTTPS sur le port 53317, sans Internet.
-
-- Si le multicast est bloqué, LocalSend se rabat sur un scan du sous-réseau ou sur une
-  adresse IP saisie à la main.
-- Sur les réseaux avec isolation des clients (eduroam, réseaux invités), rien ne
-  passe. La parade est le partage de connexion de l'iPhone. Elle vaut pour LocalSend,
-  pas pour AirDrop, qui n'utilise pas le réseau local.
-- Pour GNOME, l'extension [GLocalSend](https://github.com/donnybeelo/gnome-extensions-glocalsend)
-  ajoute LocalSend aux réglages rapides.
-
-## Licence
-
-[GPL-3.0-or-later](LICENSE), comme OWL et OpenDrop.
+**MediaTek MT7612U** (`mt76`, 2,4 et 5 GHz) est réputée compatible, mais je ne l'ai pas
+testée.
