@@ -2,7 +2,7 @@
 
 Ce projet teste si un PC sous **Linux** (Fedora, carte Wi-Fi **Realtek RTL8852BE**) peut échanger des fichiers en **AirDrop** avec un iPhone, sans application côté Apple. Il s'appuie sur **OWL**, qui réimplémente le protocole Wi-Fi d'Apple (**AWDL**), et sur **OpenDrop**, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne toute la mise en place et remet le Wi-Fi en état à la fin.
 
-> **État du projet** : la couche Wi-Fi (AWDL) fonctionne sur ma carte, grâce à deux contournements. Le transfert de fichier n'est pas encore testé, voir [Avancement](#avancement).
+> **État du projet** : la couche Wi-Fi (AWDL) fonctionne sur ma carte, grâce à deux contournements, et l'iPhone voit le PC et s'y connecte. En revanche, presque rien de ce que le PC envoie à l'iPhone n'arrive : aucun fichier n'a encore été reçu. Voir [Avancement](#avancement) et [Essais réalisés](#essais-réalisés).
 
 ## Sommaire
 
@@ -33,9 +33,10 @@ Je voulais savoir si ma carte en est capable, et ce qu'il faut contourner pour y
 | Création de l'interface `awdl0` par OWL                           | Terminé   |
 | Synchronisation AWDL avec un iPhone                               | Terminé   |
 | Script de preuve de concept (`find`, `receive`, `send`)           | Terminé   |
-| Découverte de l'iPhone par OpenDrop (`find`)                      | À tester  |
-| Réception d'un fichier envoyé par l'iPhone (`receive`)            | À tester  |
-| Envoi d'un fichier vers l'iPhone (`send`)                         | À tester  |
+| Découverte de l'iPhone par OpenDrop (`find`)                      | Bloqué : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, qu'OpenDrop ne sait pas faire |
+| L'iPhone voit le PC et s'y connecte (`receive`)                   | Terminé : connexions TLS vers le port 8771 |
+| Réception d'un fichier envoyé par l'iPhone (`receive`)            | En cours : les réponses du PC à l'iPhone se perdent |
+| Envoi d'un fichier vers l'iPhone (`send`)                         | Bloqué, comme `find` |
 
 ## Fonctionnement
 
@@ -72,15 +73,21 @@ Le script `scripts/airdrop-poc.sh` :
 .
 ├── scripts/
 │   ├── airdrop-poc.sh              # Preuve de concept : find, receive, send
+│   ├── setup-opendrop.sh           # Environnement Python d'OpenDrop et correctifs
 │   └── diagnostics/                # Scripts qui ont servi à caractériser la carte
 │       ├── injection-test-2.sh     # Réception en mode moniteur et test d'injection (canal 157)
 │       ├── awdl-scan.sh            # Scan passif des canaux AWDL
 │       ├── channel-test.sh         # Nombre de trames reçues canal par canal
 │       ├── hotspot-trick.sh        # Astuce du point d'accès sur une liste de canaux
-│       └── owl-test.sh             # OWL au premier plan, avec les deux contournements
+│       ├── owl-test.sh             # OWL au premier plan, avec les deux contournements
+│       └── summarize-run.sh        # Résumé du dernier essai (pairs, trames, requêtes, fichiers)
 ├── out/                            # Créé à l'exécution (ignoré par git)
 │   ├── owl.log                     # Journal d'OWL
+│   ├── opendrop.log                # Sortie d'OpenDrop
+│   ├── awdl0.pcap, wlan.pcap       # Captures, avec CAPTURE=1
 │   └── received/                   # Fichiers reçus
+├── patches/
+│   └── opendrop-request-body.patch # OpenDrop : corps de requête en transfert chunked
 └── README.md
 ```
 
@@ -134,11 +141,10 @@ cmake -S ~/.local/src/owl -B ~/.local/src/owl/build -DCMAKE_POLICY_VERSION_MINIM
 make -C ~/.local/src/owl/build owl
 ```
 
-OpenDrop, dans un environnement virtuel à la racine du dépôt :
+OpenDrop, dans un environnement virtuel à la racine du dépôt (`.venv`), avec les correctifs de `patches/` :
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install opendrop "setuptools<81"
+bash scripts/setup-opendrop.sh
 ```
 
 Points à connaître :
@@ -146,6 +152,7 @@ Points à connaître :
 - `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` est nécessaire avec CMake 4, à cause des sous-modules d'OWL ;
 - je compile seulement la cible `owl` : les tests d'OWL (googletest) ne compilent plus avec un GCC récent, ce qui n'affecte pas le binaire ;
 - `setuptools<81` fournit `pkg_resources`, qu'OpenDrop importe encore et qui n'existe plus dans les environnements Python récents (testé avec Python 3.14) ;
+- l'iPhone envoie ses requêtes `/Discover` et `/Ask` sans en-tête `Content-Length`, a priori en transfert *chunked*. OpenDrop 0.13.0 plante alors (`int() argument must be ... not 'NoneType'`) ; `patches/opendrop-request-body.patch` lui apprend à lire ces requêtes. Le script peut être relancé sans risque : il saute les correctifs déjà appliqués ;
 - le pare-feu de Fedora Workstation ouvre les ports 1025 à 65535, donc le port 8771 d'OpenDrop et le mDNS passent sans réglage.
 
 ## Utilisation
@@ -160,6 +167,8 @@ sudo bash scripts/airdrop-poc.sh send FICHIER   # chercher 30 s, puis envoyer à
 
 Le Wi-Fi habituel est coupé pendant l'essai et rétabli à la sortie. Les clés et le certificat d'OpenDrop sont générés au premier lancement dans `~/.opendrop/`.
 
+Après un essai lancé avec `CAPTURE=1`, `bash scripts/diagnostics/summarize-run.sh` (sans `sudo`) résume ce qui s'est passé : pairs AWDL vus par OWL, trames reçues de chacun et force du signal, requêtes de l'iPhone sur `awdl0`, sortie d'OpenDrop et fichiers reçus.
+
 Options, à passer en variables d'environnement :
 
 | Variable       | Défaut                              | Rôle                                   |
@@ -168,6 +177,10 @@ Options, à passer en variables d'environnement :
 | `CHANNEL`      | `149`                               | Canal AWDL (44 ou 6 possibles)         |
 | `DEVICE_NAME`  | `poc`                               | Nom affiché sur l'iPhone (`receive`)   |
 | `FIND_SECONDS` | `30`                                | Durée de recherche avant un `send`     |
+| `CAPTURE`      | `0`                                 | `1` : enregistre le trafic de `awdl0` (`out/awdl0.pcap`) et les trames Wi-Fi brutes (`out/wlan.pcap`) |
+| `OWL_ARGS`     | (vide)                              | Options en plus pour OWL, par exemple `-f -vv` (sans filtre RSSI, journal détaillé) |
+| `OPENDROP_ARGS`| (vide)                              | Options en plus pour OpenDrop, par exemple `-d` (débogage) |
+| `TCP_MSS`      | `0`                                 | Taille maximale des segments TCP envoyés à l'iPhone (`0` : pas de limite), voir le contournement 3 |
 | `OWL_BIN`      | `~/.local/src/owl/build/daemon/owl` | Binaire OWL                            |
 
 Exemple : `sudo CHANNEL=44 bash scripts/airdrop-poc.sh find`.
@@ -184,12 +197,20 @@ Exemple : `sudo CHANNEL=44 bash scripts/airdrop-poc.sh find`.
 | 6  | Réception canal par canal (6, 11, 48, 112, 149, 157) | Seul le 157 reçoit, alors que des points d'accès émettent sur 6, 48 et 112 | La carte ne reçoit que sur le dernier canal utilisé par le firmware |
 | 7  | Point d'accès éphémère, puis mode moniteur         | Réception sur 149, 44 et 6, trames AWDL décodées    | Contournement trouvé |
 | 8  | OWL avec les deux contournements, canal 149        | `add peer`, synchronisation avec l'iPhone           | La couche AWDL fonctionne |
+| 9  | `find`, feuille de partage ouverte sur l'iPhone    | Aucun appareil trouvé                               | Limite connue d'OpenDrop : pas d'annonce Bluetooth LE pour réveiller le récepteur |
+| 10 | `receive`                                          | `Address not available when binding to (fe80::…, 5353…)` | `zeroconf` ne peut pas s'attacher à une adresse IPv6 encore *tentative* et abandonne `awdl0` : le script attend maintenant la fin de la détection d'adresse dupliquée |
+| 11 | `receive`, `OWL_ARGS="-f -vv"`                     | L'iPhone voit « poc », ouvre une connexion TLS et envoie `POST /Discover` ; OpenDrop plante (`Content-Length` absent) | Seul essai où la réponse TLS du PC est passée. Correctif `patches/opendrop-request-body.patch` |
+| 12 | `receive`, `OWL_ARGS="-f -vv"`, deux fois          | Aucune donnée de l'iPhone ; OWL bascule plusieurs fois entre l'iPhone (−37 dBm) et un appareil lointain (−87 dBm) | `-f` (pas de filtre RSSI) fait suivre à OWL des appareils trop lointains |
+| 13 | `receive`, sans `-f`                               | Synchronisation stable, 7 connexions TLS de l'iPhone, aucune réponse du PC acquittée | L'iPhone reçoit nos petits paquets (SYN-ACK) mais pas la réponse TLS |
+| 14 | `receive`, sans `-f`, `TCP_MSS=500`                | Réponse TLS découpée en segments de 488 octets, toujours rien d'acquitté | La taille des segments n'est pas la cause |
 
 Remarques :
 
 - pour repérer les trames AWDL, j'utilise le dissecteur `awdl` de `tshark` : mon filtre `tcpdump` écrit à la main ne trouvait rien ;
 - les appareils Apple utilisent des adresses MAC aléatoires et des noms d'hôte en UUID, donc je ne peux pas toujours dire lequel est mon iPhone ;
-- l'iPhone suivait la séquence de canaux 48, 149 et 6. OWL reste sur le 149, ce qui suffit pour se synchroniser.
+- l'iPhone suivait la séquence de canaux 48, 149 et 6. OWL reste sur le 149, ce qui suffit pour se synchroniser ;
+- pour les essais 13 et 14, l'iPhone envoie des accusés de réception Wi-Fi à certaines de nos trames, mais je ne peux pas les associer de façon fiable aux trames émises : la capture horodate nos trames quand elles sont confiées à la carte, pas quand elles partent ;
+- ma piste principale est le moment d'émission : si le firmware émet les trames injectées en retard, elles tombent hors des courtes fenêtres où l'iPhone écoute le canal. Une carte avec un autre pilote permettrait de trancher.
 
 ## Contournements pour la RTL8852BE
 
@@ -219,6 +240,16 @@ iw dev wlp2s0 set channel 149
 ```
 
 Ce comportement du firmware n'est pas documenté : une mise à jour du noyau ou du firmware peut le corriger, ou casser le contournement.
+
+### 3. Limiter la taille des segments TCP (piste écartée, option gardée)
+
+Pendant l'essai 13, nos segments de 1 043 et 1 378 octets (la réponse TLS) étaient retransmis pendant 5 secondes sans arriver, alors que les petits paquets passaient. Avec `TCP_MSS=500`, le script fait croire au noyau que l'iPhone n'accepte que des segments de 500 octets, en réécrivant l'option MSS des SYN qu'il reçoit (règle nftables dans la table `airdrop_poc`, supprimée à la sortie). L'essai 14 montre que ça ne suffit pas, donc l'option est désactivée par défaut :
+
+```bash
+nft add table inet airdrop_poc
+nft add chain inet airdrop_poc prerouting '{ type filter hook prerouting priority mangle; }'
+nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) == syn' tcp option maxseg size set 500
+```
 
 ## Limites
 

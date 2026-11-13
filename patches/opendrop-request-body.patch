@@ -1,0 +1,48 @@
+--- a/opendrop/server.py
++++ b/opendrop/server.py
+@@ -145,6 +145,25 @@
+         self.send_header("Content-Length", content_length)
+         self.end_headers()
+ 
++    def _read_body(self):
++        """
++        Read the request body, whether it is sent with a Content-Length header
++        or with chunked transfer encoding (as recent iOS versions do)
++        """
++        if self.headers.get("transfer-encoding", "").lower() == "chunked":
++            body = b""
++            while True:
++                length = int(self.rfile.readline().split(b";")[0].strip(), 16)
++                if length == 0:
++                    # skip optional trailers up to the final empty line
++                    while self.rfile.readline().strip():
++                        pass
++                    return body
++                body += self.rfile.read(length)
++                self.rfile.readline()  # strip trailing \r\n
++        content_length = self.headers.get("Content-Length")
++        return self.rfile.read(int(content_length)) if content_length else b""
++
+     def do_HEAD(self):
+         """
+         Answer head requests
+@@ -163,8 +182,7 @@
+         self.wfile.write(body)
+ 
+     def handle_discover(self):
+-        content_length = int(self.headers["Content-Length"])
+-        post_data = self.rfile.read(content_length)
++        post_data = self._read_body()
+ 
+         AirDropUtil.write_debug(
+             self.config, post_data, "receive_discover_request.plist"
+@@ -222,8 +240,7 @@
+         self.wfile.write(discover_answer_binary)
+ 
+     def handle_ask(self):
+-        content_length = int(self.headers["Content-Length"])
+-        post_data = self.rfile.read(content_length)
++        post_data = self._read_body()
+ 
+         AirDropUtil.write_debug(self.config, post_data, "receive_ask_request.plist")
+ 
