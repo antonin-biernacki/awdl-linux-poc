@@ -2,7 +2,7 @@
 
 Ce projet teste si un PC sous **Linux** (Fedora, carte Wi-Fi **Realtek RTL8852BE**) peut échanger des fichiers en **AirDrop** avec un iPhone, sans application côté Apple. Il s'appuie sur **OWL**, qui réimplémente le protocole Wi-Fi d'Apple (**AWDL**), et sur **OpenDrop**, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne toute la mise en place et remet le Wi-Fi en état à la fin.
 
-> **État du projet** : la couche Wi-Fi (AWDL) fonctionne sur ma carte, grâce à deux contournements, et l'iPhone voit le PC et s'y connecte. En revanche, presque rien de ce que le PC envoie à l'iPhone n'arrive : aucun fichier n'a encore été reçu. Voir [Avancement](#avancement) et [Essais réalisés](#essais-réalisés).
+> **État du projet** : la couche Wi-Fi (AWDL) fonctionne sur ma carte, grâce à deux contournements, et l'iPhone voit le PC et s'y connecte. En revanche, ce que le PC envoie à l'iPhone n'arrive qu'au hasard (sur 37 connexions, 3 reçoivent la réponse TLS du PC et une seule va au bout de la poignée de main) : aucun fichier n'a encore été reçu. Voir [Avancement](#avancement) et [Essais réalisés](#essais-réalisés).
 
 ## Sommaire
 
@@ -205,6 +205,7 @@ Exemple : `sudo CHANNEL=44 bash scripts/airdrop-poc.sh find`.
 | 12 | `receive`, `OWL_ARGS="-f -vv"`, deux fois          | Aucune donnée de l'iPhone ; OWL bascule plusieurs fois entre l'iPhone (−37 dBm) et un appareil lointain (−87 dBm) | `-f` (pas de filtre RSSI) fait suivre à OWL des appareils trop lointains |
 | 13 | `receive`, sans `-f`                               | Synchronisation stable, 7 connexions TLS de l'iPhone, aucune réponse du PC acquittée | L'iPhone reçoit nos petits paquets (SYN-ACK) mais pas la réponse TLS |
 | 14 | `receive`, sans `-f`, `TCP_MSS=500`                | Réponse TLS découpée en segments de 488 octets, toujours rien d'acquitté | La taille des segments n'est pas la cause |
+| 15 | `receive`, série de 4 (`-vv` et `-f -vv` en alternance) | 37 connexions TLS de l'iPhone ; la réponse TLS du PC passe dans 3 d'entre elles ; une fois, la poignée de main TLS aboutit, l'iPhone envoie sa requête `/Discover`, OpenDrop la lit et répond, mais cette réponse n'arrive pas | Les trames du PC vers l'iPhone passent au hasard, quelles que soient les options. Le correctif d'OpenDrop fonctionne |
 
 Remarques :
 
