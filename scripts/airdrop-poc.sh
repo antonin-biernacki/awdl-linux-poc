@@ -11,7 +11,8 @@
 #
 # The Apple device must have AirDrop set to "Everyone".
 # Stop with Ctrl+C: Wi-Fi is always restored and the hotspot profile removed.
-# Logs: out/ (git-ignored). Received files land in out/received/.
+# Each run keeps its logs in out/runs/<date>-<mode>/ (git-ignored), out/latest
+# points to the last one. Received files land in out/received/.
 # Set CAPTURE=1 to also record the traffic of awdl0 (out/awdl0.pcap) and the
 # raw Wi-Fi frames of the monitor interface (out/wlan.pcap).
 # Extra OWL options go in OWL_ARGS, e.g. OWL_ARGS="-f -vv" (no RSSI filter, trace),
@@ -35,10 +36,7 @@ HOTSPOT_NAME=poc-hotspot
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT_DIR="$REPO/out"
 OPENDROP="$REPO/.venv/bin/opendrop"
-OWL_LOG="$OUT_DIR/owl.log"
-OPENDROP_LOG="$OUT_DIR/opendrop.log"
-AWDL_PCAP="$OUT_DIR/awdl0.pcap"
-WLAN_PCAP="$OUT_DIR/wlan.pcap"
+RUN_DIR=
 
 usage() {
     sed -n '7,10p' "${BASH_SOURCE[0]}" | sed 's/^# //'
@@ -64,7 +62,13 @@ OWL_BIN=${OWL_BIN:-$USER_HOME/.local/src/owl/build/daemon/owl}
 [ -x "$OWL_BIN" ] || die "OWL not found at $OWL_BIN"
 [ -x "$OPENDROP" ] || die "OpenDrop not found at $OPENDROP (run scripts/setup-opendrop.sh first)"
 
-mkdir -p "$OUT_DIR/received"
+RUN_DIR="$OUT_DIR/runs/$(date +%Y%m%d-%H%M%S)-$MODE"
+OWL_LOG="$RUN_DIR/owl.log"
+OPENDROP_LOG="$RUN_DIR/opendrop.log"
+AWDL_PCAP="$RUN_DIR/awdl0.pcap"
+WLAN_PCAP="$RUN_DIR/wlan.pcap"
+mkdir -p "$OUT_DIR/received" "$RUN_DIR"
+ln -sfn "runs/$(basename "$RUN_DIR")" "$OUT_DIR/latest"
 : >"$OPENDROP_LOG"
 # OpenDrop runs as the user and writes received files here.
 chown -R "$SUDO_USER": "$OUT_DIR"
@@ -75,7 +79,19 @@ stop_process() {
     [ -n "$1" ] && kill "$1" 2>/dev/null && wait "$1" 2>/dev/null
 }
 
+# On Ctrl+C the pipeline ends before OpenDrop has finished shutting down; a
+# leftover instance keeps port 8771 and the next run silently moves to 8772.
+stop_opendrop() {
+    pkill -INT -f "^[^ ]*python[^ ]* $OPENDROP " 2>/dev/null || return 0
+    for _ in $(seq 10); do
+        pgrep -f "^[^ ]*python[^ ]* $OPENDROP " >/dev/null || return 0
+        sleep 0.5
+    done
+    pkill -KILL -f "^[^ ]*python[^ ]* $OPENDROP "
+}
+
 restore() {
+    stop_opendrop
     nft delete table inet "$NFT_TABLE" 2>/dev/null
     for pid in "${CAPTURE_PIDS[@]}"; do
         stop_process "$pid"
@@ -87,7 +103,7 @@ restore() {
     ip link set "$IFACE" up
     nmcli device set "$IFACE" managed yes
     chown -R "$SUDO_USER": "$OUT_DIR"
-    echo "Wi-Fi restored. Logs in $OUT_DIR"
+    echo "Wi-Fi restored. Logs in $RUN_DIR"
 }
 trap restore EXIT
 

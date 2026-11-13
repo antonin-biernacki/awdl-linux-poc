@@ -82,9 +82,11 @@ Le script `scripts/airdrop-poc.sh` :
 │       ├── owl-test.sh             # OWL au premier plan, avec les deux contournements
 │       └── summarize-run.sh        # Résumé du dernier essai (pairs, trames, requêtes, fichiers)
 ├── out/                            # Créé à l'exécution (ignoré par git)
-│   ├── owl.log                     # Journal d'OWL
-│   ├── opendrop.log                # Sortie d'OpenDrop
-│   ├── awdl0.pcap, wlan.pcap       # Captures, avec CAPTURE=1
+│   ├── runs/<date>-<mode>/         # Un dossier par essai
+│   │   ├── owl.log                 # Journal d'OWL
+│   │   ├── opendrop.log            # Sortie d'OpenDrop
+│   │   └── awdl0.pcap, wlan.pcap   # Captures, avec CAPTURE=1
+│   ├── latest -> runs/…            # Dernier essai
 │   └── received/                   # Fichiers reçus
 ├── patches/
 │   └── opendrop-request-body.patch # OpenDrop : corps de requête en transfert chunked
@@ -167,7 +169,7 @@ sudo bash scripts/airdrop-poc.sh send FICHIER   # chercher 30 s, puis envoyer à
 
 Le Wi-Fi habituel est coupé pendant l'essai et rétabli à la sortie. Les clés et le certificat d'OpenDrop sont générés au premier lancement dans `~/.opendrop/`.
 
-Après un essai lancé avec `CAPTURE=1`, `bash scripts/diagnostics/summarize-run.sh` (sans `sudo`) résume ce qui s'est passé : pairs AWDL vus par OWL, trames reçues de chacun et force du signal, requêtes de l'iPhone sur `awdl0`, sortie d'OpenDrop et fichiers reçus.
+Chaque essai garde ses journaux dans son propre dossier `out/runs/`, et `out/latest` désigne le dernier. Après un essai lancé avec `CAPTURE=1`, `bash scripts/diagnostics/summarize-run.sh [DOSSIER]` (sans `sudo`, dernier essai par défaut) résume ce qui s'est passé : pairs AWDL vus par OWL, trames reçues de chacun et force du signal, requêtes de l'iPhone sur `awdl0`, sortie d'OpenDrop et fichiers reçus.
 
 Options, à passer en variables d'environnement :
 
@@ -177,7 +179,7 @@ Options, à passer en variables d'environnement :
 | `CHANNEL`      | `149`                               | Canal AWDL (44 ou 6 possibles)         |
 | `DEVICE_NAME`  | `poc`                               | Nom affiché sur l'iPhone (`receive`)   |
 | `FIND_SECONDS` | `30`                                | Durée de recherche avant un `send`     |
-| `CAPTURE`      | `0`                                 | `1` : enregistre le trafic de `awdl0` (`out/awdl0.pcap`) et les trames Wi-Fi brutes (`out/wlan.pcap`) |
+| `CAPTURE`      | `0`                                 | `1` : enregistre le trafic de `awdl0` (`awdl0.pcap`) et les trames Wi-Fi brutes (`wlan.pcap`) dans le dossier de l'essai |
 | `OWL_ARGS`     | (vide)                              | Options en plus pour OWL, par exemple `-f -vv` (sans filtre RSSI, journal détaillé) |
 | `OPENDROP_ARGS`| (vide)                              | Options en plus pour OpenDrop, par exemple `-d` (débogage) |
 | `TCP_MSS`      | `0`                                 | Taille maximale des segments TCP envoyés à l'iPhone (`0` : pas de limite), voir le contournement 3 |

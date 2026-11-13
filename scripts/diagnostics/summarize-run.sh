@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Summarize the last run of airdrop-poc.sh from the files in out/.
+# Summarize a run of airdrop-poc.sh from its directory in out/runs/.
 # Run it after `sudo CAPTURE=1 bash scripts/airdrop-poc.sh ...`, without sudo.
 #
-# Usage: bash scripts/diagnostics/summarize-run.sh
+# Usage: bash scripts/diagnostics/summarize-run.sh [RUN_DIR]   (default: out/latest)
 # Needs tshark (package wireshark-cli) for the capture sections.
 set -u
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 OUT_DIR="$REPO/out"
-OWL_LOG="$OUT_DIR/owl.log"
-OPENDROP_LOG="$OUT_DIR/opendrop.log"
-WLAN_PCAP="$OUT_DIR/wlan.pcap"
-AWDL_PCAP="$OUT_DIR/awdl0.pcap"
+RUN_DIR=${1:-$OUT_DIR/latest}
+OWL_LOG="$RUN_DIR/owl.log"
+OPENDROP_LOG="$RUN_DIR/opendrop.log"
+WLAN_PCAP="$RUN_DIR/wlan.pcap"
+AWDL_PCAP="$RUN_DIR/awdl0.pcap"
 
 section() {
     printf '\n== %s\n' "$1"
@@ -19,6 +20,10 @@ section() {
 
 [ -f "$OWL_LOG" ] || { echo "error: no $OWL_LOG, run airdrop-poc.sh first" >&2; exit 1; }
 SELF_MAC=$(grep -o -m1 'addr [0-9a-f:]\{17\}' "$OWL_LOG" | cut -d' ' -f2)
+# OpenDrop moves to the next port when 8771 is taken: use the announced one.
+PORT=$(grep -o -m1 'port [0-9]*' "$OPENDROP_LOG" 2>/dev/null | cut -d' ' -f2)
+PORT=${PORT:-8771}
+echo "run: $(cd "$RUN_DIR" && pwd -P)"
 
 section "OWL: peers and elections"
 grep -E 'add peer|remove peer' "$OWL_LOG" | sed 's/ INFO : / /'
@@ -56,13 +61,16 @@ if command -v tshark >/dev/null && [ -f "$AWDL_PCAP" ]; then
         sort | uniq -c | sed 's/^/  /'
     echo "mDNS queries for _airdrop._tcp from peers:" \
         "$(tshark -r "$AWDL_PCAP" -Y "ipv6.src != $self_ip && dns.qry.name contains \"_airdrop\"" 2>/dev/null | wc -l)"
-    echo "TCP connections to the AirDrop server (port 8771):" \
-        "$(tshark -r "$AWDL_PCAP" -Y 'tcp.dstport == 8771 && tcp.flags.syn == 1 && tcp.flags.ack == 0' \
+    echo "TCP connections to the AirDrop server (announced port $PORT):" \
+        "$(tshark -r "$AWDL_PCAP" -Y "tcp.dstport == $PORT && tcp.flags.syn == 1 && tcp.flags.ack == 0" \
             -T fields -e tcp.stream 2>/dev/null | sort -u | wc -l)"
+    echo "TCP connections to other ports:" \
+        "$(tshark -r "$AWDL_PCAP" -Y "tcp.dstport != $PORT && tcp.flags.syn == 1 && tcp.flags.ack == 0 && ipv6.src != $self_ip" \
+            -T fields -e tcp.dstport 2>/dev/null | sort | uniq -c | tr '\n' ' ')"
     # Highest byte of our data the peer acknowledged, per connection: stuck at 1
     # means none of our segments (e.g. the TLS ServerHello) reached it.
     echo "bytes acknowledged by the peer, per connection:"
-    tshark -r "$AWDL_PCAP" -Y "tcp.srcport != 8771 && tcp.dstport == 8771" \
+    tshark -r "$AWDL_PCAP" -Y "tcp.dstport == $PORT" \
         -T fields -e tcp.stream -e tcp.ack 2>/dev/null |
         awk '{ if ($2 > max[$1] + 0) max[$1] = $2 }
              END { for (s in max) printf "  #%s: %d\n", s, (max[s] > 1 ? max[s] - 1 : 0) }' |
