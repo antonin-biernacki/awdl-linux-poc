@@ -1,4 +1,4 @@
-# poc : AirDrop sur mon PC Linux
+# awdl-linux-poc : AirDrop sur mon PC Linux
 
 Preuve de concept : savoir si ce PC (Fedora, carte Wi-Fi Realtek RTL8852BE) peut
 échanger des fichiers en **vrai AirDrop** avec un iPhone, sans application côté Apple.
