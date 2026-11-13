@@ -3,6 +3,8 @@
 Ce projet teste si un PC sous **Linux** (Fedora, carte Wi-Fi **Realtek RTL8852BE**) peut échanger des fichiers en **AirDrop** avec un iPhone, sans application côté Apple. Il s'appuie sur **OWL**, qui réimplémente le protocole Wi-Fi d'Apple (**AWDL**), et sur **OpenDrop**, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne toute la mise en place et remet le Wi-Fi en état à la fin.
 
 > **État du projet** : la couche Wi-Fi (AWDL) fonctionne sur ma carte, grâce à deux contournements, et l'iPhone voit le PC et s'y connecte. En revanche, presque rien de ce que le PC envoie à l'iPhone n'arrive : aucun fichier n'a encore été reçu. Voir [Avancement](#avancement) et [Essais réalisés](#essais-réalisés).
+>
+> **Suite** : je soupçonne ma carte. J'ai commandé une clé USB à puce **MediaTek MT7612U** pour refaire les essais, et le projet est en pause jusqu'à sa réception. Voir [Suite du projet](#suite-du-projet).
 
 ## Sommaire
 
@@ -15,6 +17,7 @@ Ce projet teste si un PC sous **Linux** (Fedora, carte Wi-Fi **Realtek RTL8852BE
 - [Utilisation](#utilisation)
 - [Essais réalisés](#essais-réalisés)
 - [Contournements pour la RTL8852BE](#contournements-pour-la-rtl8852be)
+- [Suite du projet](#suite-du-projet)
 - [Limites](#limites)
 - [Crédits](#crédits)
 
@@ -37,6 +40,7 @@ Je voulais savoir si ma carte en est capable, et ce qu'il faut contourner pour y
 | L'iPhone voit le PC et s'y connecte (`receive`)                   | Terminé : connexions TLS vers le port 8771 |
 | Réception d'un fichier envoyé par l'iPhone (`receive`)            | En cours : les réponses du PC à l'iPhone se perdent |
 | Envoi d'un fichier vers l'iPhone (`send`)                         | Bloqué, comme `find` |
+| Mêmes essais avec une clé USB MT7612U                             | En attente de la clé |
 
 ## Fonctionnement
 
@@ -123,7 +127,7 @@ iw list | grep -E "\[(6|44|149)\]"                 # ni "disabled" ni "no IR"
 sudo aireplay-ng --test wlp2s0                     # injection, carte en mode moniteur
 ```
 
-Pour un fonctionnement sans contournement, il faut une carte avec mode moniteur actif. L'équipe d'OWL a développé avec une **Atheros AR9280** (pilote `ath9k`). Côté clés USB, la **MediaTek MT7612U** (pilote `mt76`) est réputée compatible, mais je ne l'ai pas testée.
+Pour un fonctionnement sans contournement, il faut une carte avec mode moniteur actif. L'équipe d'OWL a développé avec une **Atheros AR9280** (pilote `ath9k`). Côté clés USB, la **MediaTek MT7612U** (pilote `mt76`) est réputée compatible : j'en ai commandé une pour le vérifier, voir [Suite du projet](#suite-du-projet).
 
 ## Installation
 
@@ -250,6 +254,24 @@ nft add table inet airdrop_poc
 nft add chain inet airdrop_poc prerouting '{ type filter hook prerouting priority mangle; }'
 nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) == syn' tcp option maxseg size set 500
 ```
+
+## Suite du projet
+
+Les essais 13 à 15 pointent vers la carte. En mode moniteur simple, la RTL8852BE a deux défauts que les captures montrent directement :
+
+- elle n'acquitte aucune trame reçue : sur 452 trames de données envoyées par l'iPhone lors d'un essai, 388 sont des retransmissions ;
+- elle n'émet chaque trame qu'une seule fois : aucune de ses 235 trames vers l'iPhone n'est retransmise au niveau Wi-Fi, donc une trame qui part quand l'iPhone écoute un autre canal est perdue.
+
+Pour vérifier que la carte est bien en cause, j'ai commandé une clé USB **COMFAST CF-922AC**, à puce **MediaTek MT7612U** (pilote `mt76x2u` du noyau). **Le projet est en pause jusqu'à sa réception.**
+
+À la réception, je prévois de :
+
+1. vérifier la puce et ses capacités (`lsusb`, `iw list | grep -i "active monitor"`) ;
+2. refaire le test d'injection et la réception sur les canaux 6, 44 et 149, pour savoir si les contournements 1 et 2 sont encore nécessaires ;
+3. relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 15, en regardant d'abord si l'iPhone acquitte les réponses du PC ;
+4. si ça passe, recevoir un premier fichier, puis mesurer le débit.
+
+Une clé USB a un autre intérêt : la carte interne reste connectée au Wi-Fi habituel pendant qu'AWDL tourne sur la clé.
 
 ## Limites
 
