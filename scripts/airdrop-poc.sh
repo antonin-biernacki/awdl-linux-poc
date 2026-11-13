@@ -12,18 +12,33 @@
 # The Apple device must have AirDrop set to "Everyone".
 # Stop with Ctrl+C: Wi-Fi is always restored and the hotspot profile removed.
 # Logs: out/ (git-ignored). Received files land in out/received/.
+# Set CAPTURE=1 to also record the traffic of awdl0 (out/awdl0.pcap) and the
+# raw Wi-Fi frames of the monitor interface (out/wlan.pcap).
+# Extra OWL options go in OWL_ARGS, e.g. OWL_ARGS="-f -vv" (no RSSI filter, trace),
+# extra OpenDrop options in OPENDROP_ARGS, e.g. OPENDROP_ARGS="-d" (debug).
+# Summarize a run with: bash scripts/diagnostics/summarize-run.sh
+# Set TCP_MSS (bytes) to cap the TCP segments sent to the Apple device
+# (default 0: no cap). Tested with 500: it did not help with this card.
 set -u
 
 IFACE=${IFACE:-wlp2s0}
 CHANNEL=${CHANNEL:-149}
 DEVICE_NAME=${DEVICE_NAME:-poc}
 FIND_SECONDS=${FIND_SECONDS:-30}
+CAPTURE=${CAPTURE:-0}
+OWL_ARGS=${OWL_ARGS:-}
+OPENDROP_ARGS=${OPENDROP_ARGS:-}
+TCP_MSS=${TCP_MSS:-0}
+NFT_TABLE=airdrop_poc
 HOTSPOT_NAME=poc-hotspot
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT_DIR="$REPO/out"
 OPENDROP="$REPO/.venv/bin/opendrop"
 OWL_LOG="$OUT_DIR/owl.log"
+OPENDROP_LOG="$OUT_DIR/opendrop.log"
+AWDL_PCAP="$OUT_DIR/awdl0.pcap"
+WLAN_PCAP="$OUT_DIR/wlan.pcap"
 
 usage() {
     sed -n '7,10p' "${BASH_SOURCE[0]}" | sed 's/^# //'
@@ -47,13 +62,25 @@ esac
 USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 OWL_BIN=${OWL_BIN:-$USER_HOME/.local/src/owl/build/daemon/owl}
 [ -x "$OWL_BIN" ] || die "OWL not found at $OWL_BIN"
-[ -x "$OPENDROP" ] || die "OpenDrop not found at $OPENDROP (create .venv first)"
+[ -x "$OPENDROP" ] || die "OpenDrop not found at $OPENDROP (run scripts/setup-opendrop.sh first)"
 
 mkdir -p "$OUT_DIR/received"
+: >"$OPENDROP_LOG"
+# OpenDrop runs as the user and writes received files here.
+chown -R "$SUDO_USER": "$OUT_DIR"
 OWL_PID=
+CAPTURE_PIDS=()
+
+stop_process() {
+    [ -n "$1" ] && kill "$1" 2>/dev/null && wait "$1" 2>/dev/null
+}
 
 restore() {
-    [ -n "$OWL_PID" ] && kill "$OWL_PID" 2>/dev/null && wait "$OWL_PID" 2>/dev/null
+    nft delete table inet "$NFT_TABLE" 2>/dev/null
+    for pid in "${CAPTURE_PIDS[@]}"; do
+        stop_process "$pid"
+    done
+    stop_process "$OWL_PID"
     nmcli connection delete "$HOTSPOT_NAME" >/dev/null 2>&1
     ip link set "$IFACE" down
     iw dev "$IFACE" set type managed
@@ -68,8 +95,26 @@ as_user() {
     sudo -u "$SUDO_USER" -H "$@"
 }
 
+# Runs OpenDrop on awdl0 as the user, output also appended to OPENDROP_LOG.
+# Set OPENDROP_TIMEOUT (seconds) to stop it with SIGINT after that delay.
+# Known harmless warnings are hidden.
 opendrop() {
-    as_user "$OPENDROP" "$@" -i awdl0 2>&1 | grep -v -e pkg_resources -e 'from pkg_resources'
+    local timeout_cmd=()
+    [ -n "${OPENDROP_TIMEOUT:-}" ] && timeout_cmd=(timeout -s INT "$OPENDROP_TIMEOUT")
+    # shellcheck disable=SC2086 # OPENDROP_ARGS is a list of options
+    as_user env PYTHONWARNINGS=ignore::FutureWarning PYTHONUNBUFFERED=1 "${timeout_cmd[@]}" \
+        "$OPENDROP" "$@" -i awdl0 $OPENDROP_ARGS 2>&1 |
+        grep --line-buffered -v -e pkg_resources -e 'from pkg_resources' | tee -a "$OPENDROP_LOG"
+}
+
+# True once awdl0 has a link-local IPv6 address that sockets can bind to,
+# i.e. duplicate address detection (DAD) is over.
+awdl0_address_ready() {
+    ip -6 addr show dev awdl0 scope link -tentative 2>/dev/null | grep -q inet6
+}
+
+awdl0_dad_failed() {
+    ip -6 addr show dev awdl0 dadfailed 2>/dev/null | grep -q inet6
 }
 
 echo "== Hotspot on channel $CHANNEL (so the firmware operates on it)"
@@ -86,17 +131,48 @@ iw dev "$IFACE" set type monitor
 ip link set "$IFACE" up
 iw dev "$IFACE" set channel "$CHANNEL"
 
+# Make the Apple device believe our MSS is TCP_MSS: the kernel then never sends
+# it TCP segments larger than that (rewrites the MSS option of incoming SYNs).
+if [ "$TCP_MSS" -gt 0 ]; then
+    echo "== Capping TCP segments on awdl0 to $TCP_MSS bytes"
+    nft delete table inet "$NFT_TABLE" 2>/dev/null # left over by a killed run
+    nft -f - <<EOF_NFT || die "nftables rule failed"
+table inet $NFT_TABLE {
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+        iifname "awdl0" tcp flags & (syn | ack) == syn tcp option maxseg size set $TCP_MSS
+    }
+}
+EOF_NFT
+fi
+
 echo "== Starting OWL (log: $OWL_LOG)"
-"$OWL_BIN" -i "$IFACE" -c "$CHANNEL" -N -v >"$OWL_LOG" 2>&1 &
+# shellcheck disable=SC2086 # OWL_ARGS is a list of options
+"$OWL_BIN" -i "$IFACE" -c "$CHANNEL" -N -v $OWL_ARGS >"$OWL_LOG" 2>&1 &
 OWL_PID=$!
 
+# Show AWDL peers as OWL finds or loses them, so the user knows when the Apple
+# device is in sync. tail stops by itself when OWL exits.
+tail -n +1 -F --pid="$OWL_PID" "$OWL_LOG" 2>/dev/null |
+    grep --line-buffered -E 'add peer|remove peer' |
+    sed -u 's/^[0-9:]* INFO : /   [owl] /' &
+
 for _ in $(seq 20); do
-    ip -6 addr show dev awdl0 2>/dev/null | grep -q inet6 && break
+    awdl0_address_ready && break
+    awdl0_dad_failed && die "duplicate address detection failed on awdl0: $(ip -6 addr show dev awdl0)"
     kill -0 "$OWL_PID" 2>/dev/null || die "OWL exited, see $OWL_LOG"
     sleep 1
 done
-ip -6 addr show dev awdl0 2>/dev/null | grep -q inet6 || die "awdl0 has no IPv6 address"
+awdl0_address_ready || die "awdl0 has no usable IPv6 address: $(ip -6 addr show dev awdl0 2>&1)"
 echo "awdl0 up: $(ip -6 -br addr show dev awdl0)"
+
+if [ "$CAPTURE" = 1 ]; then
+    tcpdump -i awdl0 -w "$AWDL_PCAP" 2>/dev/null &
+    CAPTURE_PIDS+=($!)
+    tcpdump -i "$IFACE" -w "$WLAN_PCAP" 2>/dev/null &
+    CAPTURE_PIDS+=($!)
+    echo "== Capturing to $AWDL_PCAP and $WLAN_PCAP"
+fi
 
 case "$MODE" in
     find)
@@ -110,7 +186,7 @@ case "$MODE" in
     send)
         file=$(realpath "$2")
         echo "== Looking for devices for $FIND_SECONDS s"
-        as_user timeout -s INT "$FIND_SECONDS" "$OPENDROP" find -i awdl0 2>&1 | grep -v pkg_resources
+        OPENDROP_TIMEOUT=$FIND_SECONDS opendrop find
         echo "== Sending $file to device 0"
         opendrop send -r 0 -f "$file"
         ;;
