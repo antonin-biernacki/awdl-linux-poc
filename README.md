@@ -257,7 +257,7 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Suite du projet
 
-Les essais 13 à 15 pointent vers la carte. En mode moniteur simple, la RTL8852BE a deux défauts que les captures montrent directement :
+Les essais 13 et 14 pointent vers la carte. En mode moniteur simple, la RTL8852BE a deux défauts que les captures montrent directement :
 
 - elle n'acquitte aucune trame reçue : sur 452 trames de données envoyées par l'iPhone lors d'un essai, 388 sont des retransmissions ;
 - elle n'émet chaque trame qu'une seule fois : aucune de ses 235 trames vers l'iPhone n'est retransmise au niveau Wi-Fi, donc une trame qui part quand l'iPhone écoute un autre canal est perdue.
@@ -268,7 +268,7 @@ Pour vérifier que la carte est bien en cause, j'ai commandé une clé USB **COM
 
 1. vérifier la puce et ses capacités (`lsusb`, `iw list | grep -i "active monitor"`) ;
 2. refaire le test d'injection et la réception sur les canaux 6, 44 et 149, pour savoir si les contournements 1 et 2 sont encore nécessaires ;
-3. relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 15, en regardant d'abord si l'iPhone acquitte les réponses du PC ;
+3. relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 13, en regardant d'abord si l'iPhone acquitte les réponses du PC ;
 4. si ça passe, recevoir un premier fichier, puis mesurer le débit.
 
 Une clé USB a un autre intérêt : la carte interne reste connectée au Wi-Fi habituel pendant qu'AWDL tourne sur la clé.
