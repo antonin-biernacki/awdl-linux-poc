@@ -21,7 +21,8 @@
 | 4. Clé MT7612U | Débit | Mesurer le débit sur plusieurs envois : environ 1 à 1,3 Mo/s, 39 Mo en 20 photos à 1,19 Mo/s | ✅ |
 | 5. Confort | Réannonce | Réannoncer le service mDNS à chaque nouvelle recherche de l'iPhone, pour éviter de relancer le script : signal `SIGUSR1` à OpenDrop sur `add peer` ou `changed channel sequence` | ✅ |
 | 5. Confort | HEIC | Déclarer le HEIC à l'iPhone pour recevoir les photos d'origine | ✅ |
-| 5. Confort | Vidéos et Live Photos | Recevoir les vidéos HEVC et les Live Photos sans conversion (reporté) | ⬜ |
+| 5. Confort | Vidéos HEVC d'origine | Recevoir les vidéos sans conversion : capacités média recopiées depuis l'iPhone | ✅ |
+| 5. Confort | Live Photos complètes | Recevoir les Live Photos avec leur vidéo (reporté, pas de piste simple) | ⬜ |
 | 5. Confort | Noms de fichiers en double | Ne pas écraser un fichier déjà reçu sous le même nom : suffixe ` (2)` | ✅ |
 | 5. Confort | Extraction sûre | Refuser les chemins qui sortent du dossier de réception, ignorer les liens symboliques | ✅ |
 | 5. Confort | Point d'accès éphémère | Le retirer du chemin de la clé : lancé seulement avec un pilote `rtw89` | ✅ |

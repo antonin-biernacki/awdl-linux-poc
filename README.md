@@ -3,7 +3,7 @@
 
 Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC échange des fichiers avec l'iPhone dans les deux sens.
 
-> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Reste à faire : recevoir les vidéos HEVC et les Live Photos dans leur format d'origine.
+> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Les photos et les vidéos arrivent dans leur format d'origine, les Live Photos en image fixe seulement. Reste à faire : accélérer l'envoi vers l'iPhone, puis un essai final avec un iPad.
 
 ## Avertissement
 
@@ -36,7 +36,7 @@ Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, pe
 
 Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournements, et l'iPhone ouvre des connexions TLS vers le PC. Les réponses du PC se perdent, donc aucun fichier ne passe.
 
-Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : ces deux formats.
+Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos (HEIC) et les vidéos (HEVC, HDR) arrivent dans leur format d'origine, une fois que le PC annonce les mêmes capacités qu'un iPhone. Les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : les Live Photos complètes.
 
 Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte et des photos à l'iPhone (0,60 Mo/s). Le type de fichier est déclaré d'après l'extension : les photos HEIC et JPEG s'ouvrent dans Photos, le texte dans Fichiers. Détail dans [ROADMAP.md](ROADMAP.md).
 
@@ -47,9 +47,9 @@ Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveill
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
 5. **R5** : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS. Avec l'annonce Bluetooth et la lecture de ces trames, `find` trouve l'iPhone et `send` lui envoie des fichiers ([R11](RESULTATS.md#r11)). [Détail](RESULTATS.md#r5)
-6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Les photos arrivent en HEIC, mais les vidéos sont encore converties ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
+6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Photos et vidéos arrivent dans leur format d'origine, les Live Photos en image fixe ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
 
-Les 34 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 38 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -122,7 +122,7 @@ patches/
     opendrop-request-body.patch   # OpenDrop : corps de requête en transfert chunked
     opendrop-dvzip.patch          # OpenDrop : fichiers reçus au format x-dvzip
     opendrop-reannounce.patch     # OpenDrop : réannonce du service sur SIGUSR1
-    opendrop-media-capabilities.patch  # OpenDrop : formats annoncés comme un Mac (photos en HEIC)
+    opendrop-media-capabilities.patch  # OpenDrop : formats annoncés comme un iPhone (HEIC, HEVC)
     opendrop-awdl-peers.patch     # OpenDrop : récepteurs trouvés dans les trames AWDL (--peers-file)
     opendrop-compat.patch         # OpenDrop : Python 3.12, libarchive-c 5 et Pillow 10
     opendrop-send-ios.patch       # OpenDrop : envoi comme iOS (x-dvzip, tailles, type de fichier)
@@ -159,7 +159,7 @@ L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la 
 
 ## Questions ouvertes
 
-- Pourquoi l'iPhone convertit-il encore les vidéos HEVC en H.264 et envoie-t-il les Live Photos sans leur vidéo ?
+- Pourquoi l'iPhone envoie-t-il les Live Photos sans leur vidéo, alors que le PC annonce les mêmes capacités que lui ?
 - Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?
 - Pourquoi l'envoi vers l'iPhone (0,60 Mo/s) est-il deux fois plus lent que la réception ?
 

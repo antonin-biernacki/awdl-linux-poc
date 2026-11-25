@@ -178,11 +178,13 @@ bit de poids fort de la longueur = 0 : bloc zlib
 
 ### R10
 
-**En annonçant les formats d'un Mac, le PC reçoit les photos en HEIC. Les vidéos HEVC restent converties en H.264, et les Live Photos arrivent sans leur vidéo.**
+**En annonçant les mêmes capacités média qu'un iPhone sous iOS 26, le PC reçoit les photos (HEIC) et les vidéos (HEVC, HDR) dans leur format d'origine. Les Live Photos arrivent sans leur vidéo.**
 
-- Preuves : avec les capacités média relevées sur macOS 10.13.3 (HEVC, HEIF/HEIC, Live Photos), la demande d'envoi de l'iPhone indique `ConvertMediaFormats = False` et deux photos arrivent en HEIC (essai 24). Une vidéo HEVC d'après l'iPhone arrive en H.264, 1080p, 30 images/s : sa date `creation_time` est celle de l'envoi, alors que `com.apple.quicktime.creationdate` est celle du tournage, donc l'iPhone la réencode pendant l'envoi. Une Live Photo arrive en image fixe seule (essais 24 et 25).
-- Débit : 0,97 à 1,09 Mo/s par fichier, mesuré par OpenDrop (essais 24 et 25).
-- Hypothèse non testée : OpenDrop se présente avec `ReceiverModelName = OpenDrop`. L'iPhone pourrait choisir les formats d'après ce modèle. OpenDrop permet de le changer avec son option `-m`.
+- Preuves : avec les capacités relevées sur macOS 10.13.3 par OpenDrop (`Version` 1, `VTMaxPlaybackLevel`), les photos arrivent en HEIC, mais une vidéo HEVC arrive en H.264, 1080p, 30 images/s. Sa date `creation_time` est celle de l'envoi, alors que `com.apple.quicktime.creationdate` est celle du tournage : l'iPhone la réencode pendant l'envoi (essai 24).
+- Capacités d'iOS 26 : un iPhone récepteur les donne dans sa réponse à `/Discover`, qu'OpenDrop enregistre avec `-d` dans `~/.opendrop/debug/send_discover_response.plist` (essai 36). Différences principales : `Version` 3, `VTMaxDecodeLevel` 180 au lieu de `VTMaxPlaybackLevel`, Dolby Vision (`VTDoViSupportedProfiles` 05 et 08), `VTIsHDRAllowedOnDevice`, conteneurs HEIF `avif` et `heics`, `SupportsAdjustmentBaseResources`, `AssetBundleFormatVersion`.
+- Avec ces capacités recopiées à l'identique, la vidéo arrive en HEVC (`hvc1`, HDR HLG), 3,98 Mo au lieu de 6,9 Mo en H.264, avec `creation_time` à l'heure du tournage (essai 37).
+- Live Photos : l'iPhone ne propose que l'image fixe dès sa demande d'envoi (un seul fichier HEIC, `ShouldConvertMediaFormats` à vrai), pastille "Live" activée. Il décide donc avant `/Ask`, d'après la réponse à `/Discover`. Ni les capacités d'iOS 26 ni un modèle de Mac (`-m`) n'y changent rien (essais 35, 37 et 38).
+- Débit : 0,95 à 1,12 Mo/s par fichier, mesuré par OpenDrop (essais 24 à 38).
 - Date : 2026-11-25
 - Produit par : `patches/opendrop-media-capabilities.patch`, puis `sudo IFACE=wlp4s0f4u1 CAPTURE=1 OPENDROP_ARGS="-d" bash scripts/airdrop-poc.sh receive` (`-d` enregistre les requêtes de l'iPhone dans `~/.opendrop/debug/`)
 
@@ -202,7 +204,7 @@ bit de poids fort de la longueur = 0 : bloc zlib
 
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 34 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 38 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -240,11 +242,16 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 32 | 2026-11-25 | Envoi corrigé, en `x-cpio` compressé puis en `x-dvzip` | L'iPhone accuse réception en TCP mais ne répond pas à `/Upload`. Barre de progression figée | Il manque des informations sur le transfert |
 | 33 | 2026-11-25 | `opendrop-send-ios.patch` : tailles et identifiant de transfert. Texte, puis photo HEIC | `Uploading has been successful`. Texte ouvert dans Fichiers. Photo de 2,94 Mo en 4,9 s (0,60 Mo/s), ouverte dans Fichiers | Premier envoi du PC vers l'iPhone |
 | 34 | 2026-11-25 | Type de fichier d'après l'extension, `Image.LANCZOS` au lieu de `Image.ANTIALIAS`. Une photo HEIC, puis une JPEG | `Uploading has been successful` deux fois. Les deux photos s'ouvrent dans Photos | Le type déclaré décide de l'application |
+| 35 | 2026-11-25 | Modèle annoncé `MacBookPro18,1` (`-m`), capacités de macOS 10.13 | Vidéo toujours en H.264, Live Photo toujours en image fixe | Le modèle seul ne change rien |
+| 36 | 2026-11-25 | `find` avec `-d`, iPhone récepteur | Réponse `/Discover` de l'iPhone enregistrée, avec ses capacités média au format d'iOS 26 (`Version` 3, `VTMaxDecodeLevel`, Dolby Vision) | Format de référence trouvé |
+| 37 | 2026-11-25 | Capacités d'iOS 26 recopiées à l'identique. Une Live Photo, une vidéo HEVC | Vidéo en HEVC d'origine (HDR, 3,98 Mo). Live Photo en image fixe, l'iPhone ne propose que le HEIC | Vidéos d'origine. Live Photos toujours incomplètes |
+| 38 | 2026-11-25 | Mêmes capacités et modèle `MacBookPro18,1`. Une Live Photo | Toujours l'image fixe seule | Le modèle ne débloque pas les Live Photos |
 
 ## Pistes écartées
 
 - **Filtre `tcpdump` écrit à la main pour repérer les trames AWDL** : il ne trouvait rien. Le dissecteur `awdl` de `tshark` le remplace. Avec la clé, les filtres sur le type de trame (`subtype action`) ou sur un octet (`wlan[24]`) ne trouvent rien non plus, alors que les trames sont dans la capture (essai 18). Le filtre sur le BSSID d'AWDL, celui qu'utilise OWL, fonctionne : `wlan addr3 00:25:00:ff:94:73`.
-- **Annonce élargie des formats** : HEVC jusqu'au niveau 6.2, Dolby Vision (`dvh1`) et macOS 15.1 ne changent rien aux vidéos ni aux Live Photos (essai 25). Le correctif garde les valeurs relevées sur un Mac.
+- **Annonce élargie des formats** : HEVC jusqu'au niveau 6.2, Dolby Vision (`dvh1`) et macOS 15.1, écrits à la main, ne changent rien aux vidéos ni aux Live Photos (essai 25). Les capacités recopiées depuis l'iPhone les remplacent ([R10](#r10)).
+- **Modèle annoncé (`-m MacBookPro18,1`)** : sans effet sur les vidéos ni sur les Live Photos (essais 35 et 38).
 - **Mode moniteur actif de la MT7612U** : la clé change de canal avec le montage de [R7](#r7), mais l'iPhone ne lui envoie rien (essai 19). L'option `ACTIVE_MONITOR` est gardée, désactivée par défaut.
 - **OWL sans filtre RSSI (`-f`)** : OWL suit alors des appareils trop lointains et perd l'iPhone (essai 12).
 - **Limiter la taille des segments TCP (`TCP_MSS`)** : avec `TCP_MSS=500`, le script réécrit l'option MSS des SYN reçus de l'iPhone (règle nftables dans la table `airdrop_poc`, supprimée à la sortie). L'essai 14 montre que ça ne suffit pas. L'option est gardée mais désactivée par défaut.
@@ -257,6 +264,6 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Questions ouvertes
 
-- **Comment recevoir les vidéos HEVC et les Live Photos d'origine ?** Essai prévu : changer le modèle annoncé avec `OPENDROP_ARGS="-m <modèle de Mac>"`, puis envoyer une vidéo et une Live Photo.
+- **Pourquoi les Live Photos arrivent-elles sans leur vidéo ?** L'iPhone le décide d'après la réponse à `/Discover`, mais ni les capacités d'iOS 26 ni le modèle n'y changent rien. Il faut peut-être un appareil connu ou un contact. Je n'ai pas de moyen direct de le tester.
 - **Pourquoi l'envoi (0,60 Mo/s) est-il plus lent que la réception ?** Piste : comparer les captures des deux sens (taille des segments, retransmissions, moment d'émission).
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).

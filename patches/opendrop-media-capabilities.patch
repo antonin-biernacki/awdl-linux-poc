@@ -1,9 +1,23 @@
 --- a/opendrop/server.py
 +++ b/opendrop/server.py
-@@ -175,31 +175,33 @@
+@@ -173,33 +173,55 @@
+         )
+ 
          # sample media capabilities as recorded from macOS 10.13.3
++        # Media capabilities, as an iPhone on iOS 26 announces them when it
++        # receives (its /Discover response). With them, the sender keeps the
++        # original formats: HEIC photos, HEVC and Dolby Vision videos, Live
++        # Photos. OpenDrop's macOS 10.13 sample (Version 1, VTMaxPlaybackLevel)
++        # only kept HEIC photos.
++        hevc_profiles = {
++            "VTPerProfileSupport": {
++                str(profile): {"VTIsHardwareAccelerated": True, "VTMaxDecodeLevel": 180}
++                for profile in (1, 2, 4)
++            },
++            "VTSupportedProfiles": [1, 2, 4],
++        }
          media_capabilities = {
-             "Version": 1,
+-            "Version": 1,
 -            # don't advertise any codec/container support so we receive legacy file formats (JPEG instead of HEIF, etc.)
 -            # 'Codecs': {
 -            #     'hvc1': {
@@ -29,30 +43,39 @@
 -            #         'LivePhotoFormatVersion': '1'
 -            #     }
 -            # }
-+            # Advertise what a Mac advertises, so that the sender keeps HEIC
-+            # photos instead of converting them to JPEG. iOS 26 still converts
-+            # HEVC videos to H.264 and sends Live Photos as still images.
++            "Version": 3,
 +            "Codecs": {
++                "CodecSupport": {
++                    "VTCodecSupportDict": {
++                        "hvc1": {"VTIsHDRAllowedOnDevice": True, **hevc_profiles}
++                    },
++                    "VTIsHDRAllowedOnDevice": True,
++                },
 +                "hvc1": {
 +                    "Profiles": {
-+                        "VTPerProfileSupport": {
-+                            "1": {"VTMaxPlaybackLevel": 120},
-+                            "2": {"VTMaxPlaybackLevel": 120},
-+                            "3": {},
-+                        },
-+                        "VTSupportedProfiles": [1, 2, 3],
++                        "VTDoViIsHardwareAccelerated": True,
++                        "VTDoViSupportedLevels": [f"{n:02d}" for n in range(1, 10)],
++                        "VTDoViSupportedProfiles": ["05", "08"],
++                        "VTIsHDRAllowedOnDevice": True,
++                        **hevc_profiles,
 +                    }
-+                }
++                },
 +            },
 +            "ContainerFormats": {
 +                "public.heif-standard": {
-+                    "HeifSubtypes": ["public.avci", "public.heic", "public.heif"]
++                    "HeifSubtypes": [
++                        "public.avci",
++                        "public.avif",
++                        "public.heic",
++                        "public.heics",
++                        "public.heif",
++                    ]
 +                }
 +            },
++            "SupportsAdjustmentBaseResources": True,
 +            "Vendor": {
 +                "com.apple": {
-+                    "OSVersion": [10, 13, 3],
-+                    "OSBuildVersion": "17D102",
++                    "AssetBundleFormatVersion": "1",
 +                    "LivePhotoFormatVersion": "1",
 +                }
 +            },
