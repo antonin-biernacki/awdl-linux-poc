@@ -26,4 +26,4 @@
 | 5. Confort | Extraction sûre | Refuser les chemins qui sortent du dossier de réception, ignorer les liens symboliques | ✅ |
 | 5. Confort | Point d'accès éphémère | Le retirer du chemin de la clé : lancé seulement avec un pilote `rtw89` | ✅ |
 | 5. Confort | Mode moniteur actif | Comprendre pourquoi l'iPhone n'envoie rien dans ce mode | ⬜ |
-| 5. Confort | Type de fichier à l'envoi | Déclarer le bon type (`public.heic`, `public.jpeg`...) pour que les photos envoyées arrivent dans Photos | ⬜ |
+| 5. Confort | Type de fichier à l'envoi | Déclarer le bon type (`public.heic`, `public.jpeg`...) pour que les photos envoyées arrivent dans Photos | ✅ |

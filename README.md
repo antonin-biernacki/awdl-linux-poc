@@ -3,7 +3,7 @@
 
 Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC échange des fichiers avec l'iPhone dans les deux sens.
 
-> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Restent à faire : les vidéos HEVC et les Live Photos d'origine, et le type des fichiers envoyés, pour que les photos arrivent dans Photos.
+> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Reste à faire : recevoir les vidéos HEVC et les Live Photos dans leur format d'origine.
 
 ## Avertissement
 
@@ -38,7 +38,7 @@ Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournement
 
 Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : ces deux formats.
 
-Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte et une photo à l'iPhone (0,60 Mo/s). Ils s'ouvrent dans l'app Fichiers, pas dans Photos. Détail dans [ROADMAP.md](ROADMAP.md).
+Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte et des photos à l'iPhone (0,60 Mo/s). Le type de fichier est déclaré d'après l'extension : les photos HEIC et JPEG s'ouvrent dans Photos, le texte dans Fichiers. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -49,7 +49,7 @@ Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveill
 5. **R5** : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS. Avec l'annonce Bluetooth et la lecture de ces trames, `find` trouve l'iPhone et `send` lui envoie des fichiers ([R11](RESULTATS.md#r11)). [Détail](RESULTATS.md#r5)
 6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Les photos arrivent en HEIC, mais les vidéos sont encore converties ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
 
-Les 33 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 34 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -124,8 +124,8 @@ patches/
     opendrop-reannounce.patch     # OpenDrop : réannonce du service sur SIGUSR1
     opendrop-media-capabilities.patch  # OpenDrop : formats annoncés comme un Mac (photos en HEIC)
     opendrop-awdl-peers.patch     # OpenDrop : récepteurs trouvés dans les trames AWDL (--peers-file)
-    opendrop-compat.patch         # OpenDrop : Python 3.12 et libarchive-c 5
-    opendrop-send-ios.patch       # OpenDrop : envoi en x-dvzip, avec tailles et identifiant de transfert
+    opendrop-compat.patch         # OpenDrop : Python 3.12, libarchive-c 5 et Pillow 10
+    opendrop-send-ios.patch       # OpenDrop : envoi comme iOS (x-dvzip, tailles, type de fichier)
 docs/
     GUIDE.md                      # installation détaillée, options, vérifier une carte
 out/                              # créé à l'exécution, ignoré par git : journaux, captures, fichiers reçus
@@ -161,7 +161,6 @@ L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la 
 
 - Pourquoi l'iPhone convertit-il encore les vidéos HEVC en H.264 et envoie-t-il les Live Photos sans leur vidéo ?
 - Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?
-- Les photos envoyées iraient-elles dans Photos avec le bon type de fichier (`public.heic`, `public.jpeg`) ?
 - Pourquoi l'envoi vers l'iPhone (0,60 Mo/s) est-il deux fois plus lent que la réception ?
 
 Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).

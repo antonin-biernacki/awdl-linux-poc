@@ -46,3 +46,15 @@
          )
  
          self.interface_name = interface_name
+--- a/opendrop/util.py
++++ b/opendrop/util.py
+@@ -111,7 +111,8 @@
+             pass  # no EXIF data available
+ 
+         # Big image
+-        im.thumbnail((540, 540), Image.ANTIALIAS)
++        # Pillow 10 removed Image.ANTIALIAS, an alias of LANCZOS
++        im.thumbnail((540, 540), Image.LANCZOS)
+         img_bytes = io.BytesIO()
+         im.save(img_bytes, format="JPEG2000")
+         file_icon = img_bytes.getvalue()

@@ -13,8 +13,8 @@ Les commandes sont dans [Reproduire](../README.md#reproduire). Points à connaî
 - `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop sur `SIGUSR1`. `scripts/airdrop-poc.sh` l'envoie quand l'iPhone commence une nouvelle recherche, après la ligne `Service announced` (voir [R9](../RESULTATS.md#r9)) ;
 - `patches/opendrop-media-capabilities.patch` annonce à l'iPhone les formats d'un Mac, pour recevoir les photos en HEIC (voir [R10](../RESULTATS.md#r10)) ;
 - `patches/opendrop-awdl-peers.patch` ajoute l'option `--peers-file` : OpenDrop y lit les récepteurs trouvés dans les trames AWDL (voir [R11](../RESULTATS.md#r11)) ;
-- `patches/opendrop-compat.patch` adapte OpenDrop à Python 3.12 et plus et à libarchive-c 5 ;
-- `patches/opendrop-send-ios.patch` envoie les fichiers comme iOS : `x-dvzip`, tailles et identifiant de transfert ;
+- `patches/opendrop-compat.patch` adapte OpenDrop à Python 3.12 et plus, à libarchive-c 5 et à Pillow 10 ;
+- `patches/opendrop-send-ios.patch` envoie les fichiers comme iOS : `x-dvzip`, tailles, identifiant de transfert, et type de fichier d'après l'extension, pour que les photos arrivent dans Photos ;
 - `scripts/setup-opendrop.sh` peut être relancé sans risque : il réinstalle OpenDrop d'origine, puis applique tous les correctifs dans l'ordre. Tester chaque correctif à part ne suffit pas, car un correctif peut modifier le contexte d'un autre ;
 - le pare-feu de Fedora Workstation ouvre les ports 1025 à 65535, donc le port 8771 d'OpenDrop et le mDNS passent sans réglage ;
 - les clés et le certificat d'OpenDrop sont générés au premier lancement dans `~/.opendrop/`.

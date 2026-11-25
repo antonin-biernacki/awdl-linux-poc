@@ -9,7 +9,47 @@
  from http.client import HTTPSConnection
  
  import fleep
-@@ -92,6 +94,7 @@
+@@ -86,12 +88,47 @@
+             self.callback_remove(info)
+ 
+ 
++# Type (UTI) declared to the receiver, from the file extension as macOS does.
++# iOS uses it to choose where the file goes: Photos for images and videos,
++# Files for the rest. fleep, OpenDrop's content sniffer, misses HEIC and text.
++UTI_BY_EXTENSION = {
++    ".heic": "public.heic",
++    ".heif": "public.heif",
++    ".jpg": "public.jpeg",
++    ".jpeg": "public.jpeg",
++    ".png": "public.png",
++    ".gif": "com.compuserve.gif",
++    ".tif": "public.tiff",
++    ".tiff": "public.tiff",
++    ".webp": "org.webmproject.webp",
++    ".dng": "com.adobe.raw-image",
++    ".mov": "com.apple.quicktime-movie",
++    ".mp4": "public.mpeg-4",
++    ".m4v": "com.apple.m4v-video",
++    ".mp3": "public.mp3",
++    ".m4a": "com.apple.m4a-audio",
++    ".txt": "public.plain-text",
++    ".pdf": "com.adobe.pdf",
++    ".zip": "public.zip-archive",
++    ".vcf": "public.vcard",
++}
++
++
++def uti_type(file_path, flp):
++    """
++    UTI of the file: from its extension, else from fleep's guess.
++    """
++    ext = os.path.splitext(file_path)[1].lower()
++    return UTI_BY_EXTENSION.get(ext) or AirDropUtil.get_uti_type(flp)
++
++
+ class AirDropClient:
+     def __init__(self, config, receiver):
+         self.config = config
          self.receiver_host = receiver[0]
          self.receiver_port = receiver[1]
          self.http_conn = None
@@ -17,7 +57,7 @@
  
      def send_POST(self, url, body, headers=None):
          logger.debug(f"Send {url} request")
-@@ -151,6 +154,10 @@
+@@ -151,6 +188,10 @@
              "SenderModelName": self.config.computer_model,
              "SenderID": self.config.service_id,
              "ConvertMediaFormats": False,
@@ -28,10 +68,12 @@
          }
          if self.config.record_data:
              ask_body["SenderRecordData"] = self.config.record_data
-@@ -161,9 +168,11 @@
+@@ -160,10 +201,12 @@
+                 file_name = os.path.basename(file)
                  file_entry = {
                      "FileName": file_name,
-                     "FileType": AirDropUtil.get_uti_type(flp),
+-                    "FileType": AirDropUtil.get_uti_type(flp),
++                    "FileType": uti_type(file, flp),
 +                    "FileSize": os.path.getsize(file),
                      "FileBomPath": os.path.join(".", file_name),
 -                    "FileIsDirectory": os.path.isdir(file_name),
@@ -41,7 +83,7 @@
                  }
                  yield file_entry
  
-@@ -197,22 +206,29 @@
+@@ -197,22 +240,29 @@
          if is_url:
              return
  

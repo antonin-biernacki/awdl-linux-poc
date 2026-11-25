@@ -194,15 +194,15 @@ bit de poids fort de la longueur = 0 : bloc zlib
 - Débit : 2,94 Mo en 4,9 s après l'acceptation, soit 0,60 Mo/s.
 - Annonce Bluetooth : données constructeur Apple (`0x004c`), type AirDrop `0x05`, 18 octets dont quatre empreintes tronquées de l'identité de l'expéditeur. Avec des empreintes nulles, un iPhone en "Tout le monde" répond. Le script l'émet avec `btmgmt add-adv`, puis remet le Bluetooth dans son état de départ.
 - Découverte : le script écrit chaque récepteur annoncé dans les trames AWDL dans `out/awdl-peers.txt` (adresse MAC, port, instance, flags). `patches/opendrop-awdl-peers.patch` ajoute à OpenDrop l'option `--peers-file`, qui lit ce fichier et déduit l'adresse IPv6 lien-local de l'adresse MAC (EUI-64).
-- Compatibilité : OpenDrop 0.13.0 ne tourne plus avec Python 3.12 et plus (`HTTPSConnection` sans `key_file` ni `cert_file`) ni avec libarchive-c 5 (constructeur de `ArchiveEntry` changé). `patches/opendrop-compat.patch` corrige les deux (essais 30 et 31).
+- Compatibilité : OpenDrop 0.13.0 ne tourne plus avec Python 3.12 et plus (`HTTPSConnection` sans `key_file` ni `cert_file`), avec libarchive-c 5 (constructeur de `ArchiveEntry` changé) ni avec Pillow 10 (`Image.ANTIALIAS` supprimé, utilisé pour la vignette d'une image). `patches/opendrop-compat.patch` corrige les trois (essais 30, 31 et 34).
 - Envoi : avec l'envoi d'origine d'OpenDrop, l'iPhone accepte puis garde une barre de progression figée, sans répondre à `/Upload` (essai 32). `patches/opendrop-send-ios.patch` envoie comme iOS : archive en `x-dvzip`, `FileSize` pour chaque fichier et `TransferID` dans `/Ask`, en-têtes `TotalBytes` et `TransferID` dans `/Upload` (essai 33).
-- Les fichiers arrivent dans Fichiers, pas dans Photos : OpenDrop devine le type avec `fleep`, qui ne reconnaît ni le HEIC ni le texte, et déclare `public.content`.
+- Type de fichier : OpenDrop devinait le type avec `fleep`, qui ne reconnaît ni le HEIC ni le texte. Il déclarait alors `public.content`, et l'iPhone rangeait tout dans Fichiers (essai 33). Le correctif déclare le type d'après l'extension (`public.heic`, `public.jpeg`, `public.png`, `public.plain-text`...), `fleep` restant en secours : une photo HEIC et une photo JPEG s'ouvrent dans Photos (essai 34). Le HEIC part sans vignette, ce qui ne gêne pas.
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 bash scripts/airdrop-poc.sh send FICHIER`
 
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 33 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 34 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -239,6 +239,7 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 31 | 2026-11-25 | `opendrop-compat.patch`, `find` puis `send` d'un fichier texte | `find` affiche l'iPhone et son nom. `send` : l'iPhone accepte, puis `TypeError` dans `ArchiveEntry` | OpenDrop incompatible avec libarchive-c 5 |
 | 32 | 2026-11-25 | Envoi corrigé, en `x-cpio` compressé puis en `x-dvzip` | L'iPhone accuse réception en TCP mais ne répond pas à `/Upload`. Barre de progression figée | Il manque des informations sur le transfert |
 | 33 | 2026-11-25 | `opendrop-send-ios.patch` : tailles et identifiant de transfert. Texte, puis photo HEIC | `Uploading has been successful`. Texte ouvert dans Fichiers. Photo de 2,94 Mo en 4,9 s (0,60 Mo/s), ouverte dans Fichiers | Premier envoi du PC vers l'iPhone |
+| 34 | 2026-11-25 | Type de fichier d'après l'extension, `Image.LANCZOS` au lieu de `Image.ANTIALIAS`. Une photo HEIC, puis une JPEG | `Uploading has been successful` deux fois. Les deux photos s'ouvrent dans Photos | Le type déclaré décide de l'application |
 
 ## Pistes écartées
 
@@ -257,6 +258,5 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 ## Questions ouvertes
 
 - **Comment recevoir les vidéos HEVC et les Live Photos d'origine ?** Essai prévu : changer le modèle annoncé avec `OPENDROP_ARGS="-m <modèle de Mac>"`, puis envoyer une vidéo et une Live Photo.
-- **Les photos envoyées iraient-elles dans Photos ?** Essai prévu : déclarer le type d'après l'extension (`public.heic`, `public.jpeg`, `public.plain-text`) au lieu de `fleep`, puis envoyer une photo.
 - **Pourquoi l'envoi (0,60 Mo/s) est-il plus lent que la réception ?** Piste : comparer les captures des deux sens (taille des segments, retransmissions, moment d'émission).
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).
