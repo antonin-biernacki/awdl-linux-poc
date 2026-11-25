@@ -5,6 +5,7 @@
 Les commandes sont dans [Reproduire](../README.md#reproduire). Points à connaître :
 
 - `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` est nécessaire avec CMake 4, à cause des sous-modules d'OWL ;
+- `patches/owl-tx-mcs.patch` s'applique à OWL avec `git apply`, avant la compilation : il permet d'envoyer les données en 802.11n (voir [R12](../RESULTATS.md#r12)). Sans lui, l'option `TX_MCS` est ignorée ;
 - je compile seulement la cible `owl` : les tests d'OWL (googletest) ne compilent plus avec un GCC récent, ce qui n'affecte pas le binaire ;
 - `scripts/setup-opendrop.sh` crée l'environnement virtuel `.venv` à la racine du dépôt et y installe OpenDrop 0.13.0 ;
 - `setuptools<81` fournit `pkg_resources`, qu'OpenDrop importe encore et qui n'existe plus dans les environnements Python récents (testé avec Python 3.14) ;
@@ -30,6 +31,7 @@ Options de `scripts/airdrop-poc.sh`, à passer en variables d'environnement :
 | `DEVICE_NAME`   | `poc`                               | Nom affiché sur l'iPhone (`receive`) |
 | `FIND_SECONDS`  | `30`                                | Durée de recherche avant un `send` |
 | `CAPTURE`       | `0`                                 | `1` : enregistre le trafic de `awdl0` (`out/awdl0.pcap`) et les trames Wi-Fi brutes (`out/wlan.pcap`) |
+| `TX_MCS`        | `4`                                 | Débit 802.11n (MCS 0 à 7) des données envoyées à l'iPhone. Vide : 12 Mbit/s, comme OWL d'origine. Demande `patches/owl-tx-mcs.patch` |
 | `OWL_ARGS`      | (vide)                              | Options en plus pour OWL, par exemple `-f -vv` (sans filtre RSSI, journal détaillé) |
 | `OPENDROP_ARGS` | (vide)                              | Options en plus pour OpenDrop, par exemple `-d` (débogage) |
 | `TCP_MSS`       | `0`                                 | Taille maximale des segments TCP envoyés à l'iPhone (`0` : pas de limite), voir les [pistes écartées](../RESULTATS.md#pistes-écartées) |

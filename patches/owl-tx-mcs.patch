@@ -1,0 +1,62 @@
+--- a/src/tx.c
++++ b/src/tx.c
+@@ -21,6 +21,7 @@
+ #include <string.h>
+ 
+ #include <radiotap.h>
++#include <stdlib.h>
+ 
+ #include "tx.h"
+ #include "sync.h"
+@@ -318,6 +319,39 @@
+ 	return ptr - buf;
+ }
+ 
++/*
++ * Unicast data frames can use an 802.11n rate: set OWL_TX_MCS to an HT MCS
++ * index (0 to 7, one stream, 20 MHz, long guard interval). Without it, every
++ * frame goes out at 12 Mbit/s, which caps transfers to the peer at about
++ * 0.6 MB/s. Action frames and multicast data keep 12 Mbit/s: every peer must
++ * receive them.
++ */
++static int tx_mcs(void) {
++	static int mcs = -2;
++	if (mcs == -2) {
++		const char *value = getenv("OWL_TX_MCS");
++		mcs = (value && *value) ? atoi(value) : -1;
++		if (mcs < 0 || mcs > 7)
++			mcs = -1;
++	}
++	return mcs;
++}
++
++static int ieee80211_init_radiotap_header_mcs(uint8_t *buf, int mcs) {
++	struct ieee80211_radiotap_header *hdr = (struct ieee80211_radiotap_header *) buf;
++	uint8_t *ptr = buf + sizeof(struct ieee80211_radiotap_header);
++
++	hdr->it_version = 0;
++	hdr->it_pad = 0;
++	*ptr++ = IEEE80211_RADIOTAP_MCS_HAVE_BW | IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_GI;
++	*ptr++ = IEEE80211_RADIOTAP_MCS_BW_20; /* long guard interval */
++	*ptr++ = (uint8_t) mcs;
++	hdr->it_len = htole16((uint16_t) (ptr - buf));
++	hdr->it_present = htole32(ieee80211_radiotap_type_to_mask(IEEE80211_RADIOTAP_MCS));
++
++	return ptr - buf;
++}
++
+ int ieee80211_init_awdl_hdr(uint8_t *buf, const struct ether_addr *src, const struct ether_addr *dst,
+                             struct ieee80211_state *state, uint16_t type) {
+ 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) buf;
+@@ -389,7 +423,10 @@
+                               struct awdl_state *state, struct ieee80211_state *ieee80211_state) {
+ 	uint8_t *ptr = buf;
+ 
+-	ptr += ieee80211_init_radiotap_header(ptr);
++	if (tx_mcs() >= 0 && !(dst->ether_addr_octet[0] & 0x01))
++		ptr += ieee80211_init_radiotap_header_mcs(ptr, tx_mcs());
++	else
++		ptr += ieee80211_init_radiotap_header(ptr);
+ 	ptr += ieee80211_init_awdl_data_hdr(ptr, src, dst, ieee80211_state);
+ 	ptr += llc_init_awdl_hdr(ptr);
+ 	ptr += awdl_init_data(ptr, state);

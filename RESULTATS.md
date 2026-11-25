@@ -16,6 +16,7 @@
   - [R9](#r9)
   - [R10](#r10)
   - [R11](#r11)
+  - [R12](#r12)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
@@ -202,9 +203,20 @@ bit de poids fort de la longueur = 0 : bloc zlib
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 bash scripts/airdrop-poc.sh send FICHIER`
 
+### R12
+
+**OWL envoyait toutes ses trames à 12 Mbit/s. En envoyant les données en 802.11n, l'envoi vers l'iPhone passe de 0,60 à 1,20 Mo/s.**
+
+- Cause : OWL écrit dans l'en-tête radiotap de chaque trame émise un débit fixe de 12 Mbit/s (`src/tx.c`, avec un commentaire "TODO" sur le sujet). Dans l'autre sens, l'iPhone envoie à 54 à 121 Mbit/s en 802.11n.
+- Correctif : `patches/owl-tx-mcs.patch`. Les trames de données unicast portent un champ radiotap MCS (802.11n, un flux, 20 MHz, intervalle de garde long), avec l'index lu dans la variable d'environnement `OWL_TX_MCS` (0 à 7). Les trames AWDL et les données multicast restent à 12 Mbit/s, car tous les pairs doivent les recevoir. Le script passe `TX_MCS`, 4 par défaut.
+- Preuves : la même vidéo de 6,9 Mo part en 11,5 s à 12 Mbit/s (0,60 Mo/s), en 5,8 s en MCS 4 (1,20 Mo/s) et en 5,3 s en MCS 7 (1,30 Mo/s). La capture Wi-Fi montre les trames de données au débit demandé (essais 39 à 41).
+- Le débit plafonne comme en réception. Explication probable : AWDL ne passe qu'une partie de son temps sur le canal 149. MCS 4 est gardé par défaut, presque aussi rapide que MCS 7 et plus tolérant à la distance.
+- Date : 2026-11-25
+- Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 TX_MCS=4 bash scripts/airdrop-poc.sh send FICHIER`
+
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 38 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 41 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -246,6 +258,9 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 36 | 2026-11-25 | `find` avec `-d`, iPhone récepteur | Réponse `/Discover` de l'iPhone enregistrée, avec ses capacités média au format d'iOS 26 (`Version` 3, `VTMaxDecodeLevel`, Dolby Vision) | Format de référence trouvé |
 | 37 | 2026-11-25 | Capacités d'iOS 26 recopiées à l'identique. Une Live Photo, une vidéo HEVC | Vidéo en HEVC d'origine (HDR, 3,98 Mo). Live Photo en image fixe, l'iPhone ne propose que le HEIC | Vidéos d'origine. Live Photos toujours incomplètes |
 | 38 | 2026-11-25 | Mêmes capacités et modèle `MacBookPro18,1`. Une Live Photo | Toujours l'image fixe seule | Le modèle ne débloque pas les Live Photos |
+| 39 | 2026-11-25 | Envoi d'une vidéo de 6,9 Mo à 12 Mbit/s (comportement d'origine d'OWL) | 11,5 s, 0,60 Mo/s, 17 retransmissions TCP | Référence |
+| 40 | 2026-11-25 | Même envoi, `TX_MCS=4` (39 Mbit/s) | 5,8 s, 1,20 Mo/s, 9 retransmissions TCP | Débit doublé |
+| 41 | 2026-11-25 | Même envoi, `TX_MCS=7` (65 Mbit/s) | 5,3 s, 1,30 Mo/s, 11 retransmissions TCP | Gain faible au-delà de MCS 4 |
 
 ## Pistes écartées
 
@@ -265,5 +280,4 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 ## Questions ouvertes
 
 - **Pourquoi les Live Photos arrivent-elles sans leur vidéo ?** L'iPhone le décide d'après la réponse à `/Discover`, mais ni les capacités d'iOS 26 ni le modèle n'y changent rien. Il faut peut-être un appareil connu ou un contact. Je n'ai pas de moyen direct de le tester.
-- **Pourquoi l'envoi (0,60 Mo/s) est-il plus lent que la réception ?** Piste : comparer les captures des deux sens (taille des segments, retransmissions, moment d'émission).
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).

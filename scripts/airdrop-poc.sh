@@ -24,6 +24,10 @@
 # devices only turn on AWDL and their AirDrop server after receiving one.
 # Bluetooth is turned on for the run and put back as it was on exit.
 # Set BLE=0 to skip it, BT_INDEX to pick another controller (default 0: hci0).
+# TX_MCS (0 to 7): 802.11n rate of unicast data instead of 12 Mbit/s (needs
+# patches/owl-tx-mcs.patch in OWL, ignored otherwise). Default 4 (39 Mbit/s):
+# sending went from 0.6 to 1.2 MB/s, and MCS 7 only reached 1.3 MB/s.
+# TX_MCS= (empty) keeps 12 Mbit/s.
 # Set ACTIVE_MONITOR=1 for an adapter with active monitor mode (e.g. MT7612U):
 # no hotspot trick, IFACE in active monitor mode (it ACKs incoming frames).
 # mac80211 only tunes an active monitor interface through its virtual monitor,
@@ -39,6 +43,7 @@ OWL_ARGS=${OWL_ARGS:-}
 OPENDROP_ARGS=${OPENDROP_ARGS:-}
 TCP_MSS=${TCP_MSS:-0}
 ACTIVE_MONITOR=${ACTIVE_MONITOR:-0}
+TX_MCS=${TX_MCS-4}
 HELPER_IFACE=pocmon0
 BLE=${BLE:-1}
 BT_INDEX=${BT_INDEX:-0}
@@ -234,7 +239,7 @@ fi
 
 echo "== Starting OWL (log: $OWL_LOG)"
 # shellcheck disable=SC2086 # OWL_ARGS is a list of options
-"$OWL_BIN" -i "$IFACE" -c "$CHANNEL" -N -v $OWL_ARGS >"$OWL_LOG" 2>&1 &
+OWL_TX_MCS=$TX_MCS "$OWL_BIN" -i "$IFACE" -c "$CHANNEL" -N -v $OWL_ARGS >"$OWL_LOG" 2>&1 &
 OWL_PID=$!
 
 # Show AWDL peers as OWL finds or loses them, so the user knows when the Apple
