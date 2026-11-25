@@ -1,18 +1,34 @@
 --- a/opendrop/client.py
 +++ b/opendrop/client.py
-@@ -24,6 +24,8 @@
+@@ -24,6 +24,9 @@
  import platform
  import plistlib
  import socket
++import ssl
 +import uuid
 +import zlib
  from http.client import HTTPSConnection
  
  import fleep
-@@ -86,12 +88,47 @@
+@@ -86,12 +89,62 @@
              self.callback_remove(info)
  
  
++def client_ssl_context():
++    """
++    TLS context to connect to a receiver, without a client certificate. In
++    "Everyone" mode, an iPad answers a self-signed client certificate with a
++    bad_certificate alert, while it accepts a connection without one (an
++    iPhone accepts both). The receiver's certificate is not checked, as
++    OpenDrop already did: AirDrop peers use certificates we cannot verify.
++    """
++    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
++    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
++    ctx.check_hostname = False
++    ctx.verify_mode = ssl.CERT_NONE
++    return ctx
++
++
 +# Type (UTI) declared to the receiver, from the file extension as macOS does.
 +# iOS uses it to choose where the file goes: Photos for images and videos,
 +# Files for the rest. fleep, OpenDrop's content sniffer, misses HEIC and text.
@@ -57,7 +73,16 @@
  
      def send_POST(self, url, body, headers=None):
          logger.debug(f"Send {url} request")
-@@ -151,6 +188,10 @@
+@@ -110,7 +163,7 @@
+                 self.receiver_host,
+                 self.receiver_port,
+                 interface_name=self.config.interface,
+-                context=self.config.get_ssl_context(),
++                context=client_ssl_context(),
+             )
+         self.http_conn.request("POST", url, body=body, headers=_headers)
+         http_resp = self.http_conn.getresponse()
+@@ -151,6 +204,10 @@
              "SenderModelName": self.config.computer_model,
              "SenderID": self.config.service_id,
              "ConvertMediaFormats": False,
@@ -68,7 +93,7 @@
          }
          if self.config.record_data:
              ask_body["SenderRecordData"] = self.config.record_data
-@@ -160,10 +201,12 @@
+@@ -160,10 +217,12 @@
                  file_name = os.path.basename(file)
                  file_entry = {
                      "FileName": file_name,
@@ -83,7 +108,7 @@
                  }
                  yield file_entry
  
-@@ -197,22 +240,29 @@
+@@ -197,22 +256,29 @@
          if is_url:
              return
  

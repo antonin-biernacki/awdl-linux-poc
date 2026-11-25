@@ -17,6 +17,7 @@
   - [R10](#r10)
   - [R11](#r11)
   - [R12](#r12)
+  - [R13](#r13)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
@@ -25,7 +26,9 @@
 
 Sur une RTL8852BE, la couche AWDL fonctionne avec deux contournements : pas de mode moniteur actif, et une réception limitée au dernier canal utilisé par le firmware. L'iPhone voit alors le PC et ouvre des connexions TLS, mais les réponses du PC se perdent.
 
-Avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone. La carte était donc bien en cause. Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer des données. Les iOS récents envoient les fichiers au format `x-dvzip`, une suite de blocs zlib autour de l'archive cpio habituelle.
+Avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone. La carte était donc bien en cause. Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer des données. Les iOS récents envoient les fichiers au format `x-dvzip`, une suite de blocs zlib autour de l'archive cpio habituelle. Photos et vidéos arrivent dans leur format d'origine si le PC annonce les capacités média d'un iPhone. Les Live Photos arrivent en image fixe.
+
+Dans l'autre sens, une annonce Bluetooth LE réveille l'appareil Apple, qui annonce son serveur AirDrop dans ses trames AWDL. Avec un envoi au format d'iOS, des données en 802.11n et une connexion sans certificat client, le PC envoie des fichiers à un iPhone et à un iPad, à environ 1,2 Mo/s.
 
 ## Méthode
 
@@ -214,9 +217,21 @@ bit de poids fort de la longueur = 0 : bloc zlib
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 TX_MCS=4 bash scripts/airdrop-poc.sh send FICHIER`
 
+### R13
+
+**Un iPad refuse le certificat client autosigné d'OpenDrop, même en "Tout le monde", mais accepte une connexion sans certificat client.**
+
+- Preuves : l'iPad envoie au PC sans difficulté (essai 42). Dans l'autre sens, il est trouvé dans les trames AWDL, puis répond à `/Discover` par l'alerte TLS `bad_certificate` (essai 43). Un certificat "feuille" (`CA:FALSE`, `clientAuth`) n'y change rien (essai 44).
+- Diagnostic (essai 45, modifications temporaires non gardées) : en TLS 1.2, l'iPad demande un certificat client (RSA ou ECDSA, sans autorité imposée) et accepte la signature `rsa_pss_rsae_sha256`, puis rejette notre certificat. Lui-même présente un certificat émis par Apple, lié à un compte. Sans certificat client, l'iPad est trouvé. Avec le certificat, toujours en "Tout le monde", il le refuse.
+- Correctif : `patches/opendrop-send-ios.patch` se connecte au récepteur sans certificat client (TLS 1.2 minimum, certificat du récepteur non vérifié, comme OpenDrop le faisait). La réception garde le certificat, que l'iPad accepte quand le PC est serveur.
+- Résultat : un fichier texte et une photo HEIC envoyés à l'iPad, une photo envoyée à l'iPhone, qui accepte aussi la connexion sans certificat (essai 46).
+- Défaut secondaire non corrigé : si `find` ne trouve aucun récepteur, `send` s'arrête sur une `TypeError` dans `_get_receiver_info` d'OpenDrop.
+- Date : 2026-11-25
+- Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh send FICHIER`
+
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 41 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 46 utilisent la clé USB MT7612U, les essais 42 à 46 un iPad.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -261,6 +276,11 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 39 | 2026-11-25 | Envoi d'une vidéo de 6,9 Mo à 12 Mbit/s (comportement d'origine d'OWL) | 11,5 s, 0,60 Mo/s, 17 retransmissions TCP | Référence |
 | 40 | 2026-11-25 | Même envoi, `TX_MCS=4` (39 Mbit/s) | 5,8 s, 1,20 Mo/s, 9 retransmissions TCP | Débit doublé |
 | 41 | 2026-11-25 | Même envoi, `TX_MCS=7` (65 Mbit/s) | 5,3 s, 1,30 Mo/s, 11 retransmissions TCP | Gain faible au-delà de MCS 4 |
+| 42 | 2026-11-25 | `receive`, envoi depuis un iPad | Une image WEBP de 199 Ko reçue | La réception marche avec l'iPad |
+| 43 | 2026-11-25 | `send` vers l'iPad | iPad trouvé dans les trames AWDL, puis alerte TLS `bad_certificate` sur `/Discover`. À la relance, connexion refusée | L'iPad refuse notre certificat client |
+| 44 | 2026-11-25 | Certificat "feuille" (`CA:FALSE`, `clientAuth`, même clé) | Toujours `bad_certificate` | La forme du certificat n'est pas en cause. Certificat d'origine remis |
+| 45 | 2026-11-25 | Diagnostics temporaires : TLS 1.2 forcé, puis sans certificat client, puis avec | Demande de certificat lisible, sans autorité imposée. Sans certificat : iPad trouvé. Avec : `bad_certificate`, iPad toujours en "Tout le monde" | L'iPad refuse un certificat autosigné, accepte l'absence de certificat |
+| 46 | 2026-11-25 | Envoi sans certificat client (`opendrop-send-ios.patch`) | Texte et photo HEIC envoyés à l'iPad, photo envoyée à l'iPhone, `Uploading has been successful` à chaque fois | Envoi validé sur les deux appareils |
 
 ## Pistes écartées
 

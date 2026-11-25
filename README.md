@@ -1,9 +1,9 @@
 <!-- clean-readme: type=recherche; langue=fr; v=2 -->
 # Preuve de concept AirDrop sur Linux
 
-Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC échange des fichiers avec l'iPhone dans les deux sens.
+Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC échange des fichiers avec un iPhone et un iPad, dans les deux sens.
 
-> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Les photos et les vidéos arrivent dans leur format d'origine, les Live Photos en image fixe seulement. Reste à faire : un essai final avec un iPad.
+> **État** : Terminé. Depuis le 2026-11-25, avec la clé USB MT7612U, le PC reçoit des fichiers d'un iPhone et d'un iPad, et leur en envoie, à environ 1,2 Mo/s. Photos et vidéos gardent leur format d'origine. Les Live Photos arrivent en image fixe, et ce point reste ouvert.
 
 ## Avertissement
 
@@ -38,7 +38,9 @@ Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournement
 
 Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos (HEIC) et les vidéos (HEVC, HDR) arrivent dans leur format d'origine, une fois que le PC annonce les mêmes capacités qu'un iPhone. Les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : les Live Photos complètes.
 
-Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte, des photos et une vidéo à l'iPhone. L'envoi atteint 1,2 Mo/s, comme la réception, une fois qu'OWL émet les données en 802.11n ([R12](RESULTATS.md#r12)). Le type de fichier est déclaré d'après l'extension : les photos HEIC et JPEG s'ouvrent dans Photos, le texte dans Fichiers. Détail dans [ROADMAP.md](ROADMAP.md).
+Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte, des photos et une vidéo à l'iPhone. L'envoi atteint 1,2 Mo/s, comme la réception, une fois qu'OWL émet les données en 802.11n ([R12](RESULTATS.md#r12)). Le type de fichier est déclaré d'après l'extension : les photos HEIC et JPEG s'ouvrent dans Photos, le texte dans Fichiers.
+
+Essai final avec un iPad : il envoie au PC et reçoit du PC. Pour l'envoi, il a fallu se connecter sans certificat client : l'iPad refuse le certificat autosigné d'OpenDrop, même en "Tout le monde" ([R13](RESULTATS.md#r13)). Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -46,10 +48,10 @@ Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveill
 2. **R2** : en mode moniteur, la carte ne reçoit que sur le dernier canal utilisé par le firmware. Un point d'accès éphémère sur le canal voulu contourne le problème. [Détail](RESULTATS.md#r2)
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
-5. **R5** : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS. Avec l'annonce Bluetooth et la lecture de ces trames, `find` trouve l'iPhone et `send` lui envoie des fichiers ([R11](RESULTATS.md#r11)). [Détail](RESULTATS.md#r5)
+5. **R5** : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS. Avec l'annonce Bluetooth et la lecture de ces trames, `find` trouve l'iPhone et `send` lui envoie des fichiers ([R11](RESULTATS.md#r11)). Un iPad demande en plus une connexion sans certificat client ([R13](RESULTATS.md#r13)). [Détail](RESULTATS.md#r5)
 6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Photos et vidéos arrivent dans leur format d'origine, les Live Photos en image fixe ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
 
-Les 41 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 46 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -146,7 +148,7 @@ Les scripts de `diagnostics/` sont gardés pour référence et contiennent des c
 | Pilote         | `rtw89_8852be`                                         |
 | Firmware       | 0.29.29.18 (`linux-firmware-20261019`)                 |
 | Clé USB        | COMFAST CF-922AC, MediaTek MT7612U (`0e8d:7612`), pilote `mt76x2u` |
-| Appareil Apple | iPhone, AirDrop réglé sur "Tout le monde"              |
+| Appareils Apple | iPhone 12 (iOS 26.1) et iPad (version inconnue), AirDrop réglé sur "Tout le monde" |
 
 OWL demande à la carte bien plus qu'une connexion Wi-Fi classique :
 

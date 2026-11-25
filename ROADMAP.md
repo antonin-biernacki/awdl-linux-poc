@@ -29,4 +29,4 @@
 | 5. Confort | Mode moniteur actif | Comprendre pourquoi l'iPhone n'envoie rien dans ce mode | ⬜ |
 | 5. Confort | Type de fichier à l'envoi | Déclarer le bon type (`public.heic`, `public.jpeg`...) pour que les photos envoyées arrivent dans Photos | ✅ |
 | 5. Confort | Vitesse d'envoi | Envoyer les données en 802.11n : de 0,60 à 1,20 Mo/s vers l'iPhone | ✅ |
-| 6. Validation | Essai avec un iPad | Envoyer et recevoir des fichiers avec un iPad | ⬜ |
+| 6. Validation | Essai avec un iPad | Envoyer et recevoir des fichiers avec un iPad : envoi sans certificat client | ✅ |
