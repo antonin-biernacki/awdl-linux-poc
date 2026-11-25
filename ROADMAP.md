@@ -19,7 +19,7 @@
 | 4. Clé MT7612U | Contournements | Refaire l'injection et la réception sur 6, 44 et 149 : injection et réception sans contournement en mode simple, mode actif seulement avec une interface d'aide | ✅ |
 | 4. Clé MT7612U | Réception | Relancer `receive` avec `IFACE=<interface de la clé>` : les réponses du PC passent, photos reçues après décodage du format `x-dvzip` | ✅ |
 | 4. Clé MT7612U | Débit | Mesurer le débit sur plusieurs envois (première mesure : 0,93 Mo/s) | 🟡 |
-| 5. Confort | Réannonce | Réannoncer le service mDNS quand l'iPhone revient, pour éviter de relancer le script | ⬜ |
+| 5. Confort | Réannonce | Réannoncer le service mDNS quand l'iPhone revient, pour éviter de relancer le script : signal `SIGUSR1` à OpenDrop à chaque `add peer` | ✅ |
 | 5. Confort | HEIC | Déclarer le HEIC à l'iPhone pour recevoir les photos d'origine | ⬜ |
 | 5. Confort | Point d'accès éphémère | Le retirer du chemin de la clé s'il n'est plus nécessaire | ⬜ |
 | 5. Confort | Mode moniteur actif | Comprendre pourquoi l'iPhone n'envoie rien dans ce mode | ⬜ |

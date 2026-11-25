@@ -196,6 +196,20 @@ if [ "$CAPTURE" = 1 ]; then
     echo "== Capturing to $AWDL_PCAP and $WLAN_PCAP"
 fi
 
+# In receive mode, ask OpenDrop to re-announce its service each time OWL finds
+# the Apple device again: after closing its share sheet, the device forgets us
+# and does not query. Only once OpenDrop has announced, i.e. handles SIGUSR1
+# (patches/opendrop-reannounce.patch): before that, the signal would kill it.
+if [ "$MODE" = receive ]; then
+    tail -n 0 -F --pid="$OWL_PID" "$OWL_LOG" 2>/dev/null |
+        grep --line-buffered 'add peer' |
+        while read -r _; do
+            grep -q 'Announcing service' "$OPENDROP_LOG" || continue
+            pkill -USR1 -u "$SUDO_USER" -f -- "$OPENDROP receive" &&
+                echo "   [poc] peer back, re-announcing the service"
+        done &
+fi
+
 case "$MODE" in
     find)
         echo "== Looking for devices (Ctrl+C to stop)"

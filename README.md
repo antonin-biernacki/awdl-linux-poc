@@ -3,7 +3,7 @@
 
 Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC reçoit des photos envoyées par l'iPhone.
 
-> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des photos de l'iPhone. Après une fermeture de la feuille de partage, l'iPhone ne revoit plus le PC sans relancer le script. L'envoi depuis le PC reste bloqué par l'annonce Bluetooth LE.
+> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone, y compris après une fermeture et une réouverture de la feuille de partage. L'envoi depuis le PC reste bloqué par l'annonce Bluetooth LE.
 
 ## Avertissement
 
@@ -36,7 +36,7 @@ Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, pe
 
 Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournements, et l'iPhone ouvre des connexions TLS vers le PC. Les réponses du PC se perdent, donc aucun fichier ne passe.
 
-Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu deux photos de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Restent à faire : se réannoncer quand l'iPhone revient, recevoir les photos en HEIC et mesurer le débit. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
+Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Restent à faire : recevoir les photos en HEIC et mesurer le débit. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -45,9 +45,9 @@ Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. 
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
 5. **R5** : `find` et `send` ne trouvent pas l'iPhone, qui n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE. [Détail](RESULTATS.md#r5)
-6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (3,6 Mo à 0,93 Mo/s). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). [Détail](RESULTATS.md#r6)
+6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (3,6 Mo à 0,93 Mo/s). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). [Détail](RESULTATS.md#r6)
 
-Les 22 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 23 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -116,6 +116,7 @@ scripts/
 patches/
     opendrop-request-body.patch   # OpenDrop : corps de requête en transfert chunked
     opendrop-dvzip.patch          # OpenDrop : fichiers reçus au format x-dvzip
+    opendrop-reannounce.patch     # OpenDrop : réannonce du service sur SIGUSR1
 docs/
     GUIDE.md                      # installation détaillée, options, vérifier une carte
 out/                              # créé à l'exécution, ignoré par git : journaux, captures, fichiers reçus
@@ -149,7 +150,6 @@ L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la 
 
 ## Questions ouvertes
 
-- Comment faire revoir le PC à l'iPhone après une fermeture de la feuille de partage, sans relancer le script ? Piste : réannoncer le service mDNS quand OWL retrouve l'iPhone.
 - Peut-on recevoir les photos en HEIC, en déclarant ce format dans la réponse d'OpenDrop ?
 - Quel débit obtient-on sur plusieurs envois, et avec des fichiers plus gros ?
 - Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?

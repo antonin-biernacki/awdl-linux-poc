@@ -13,6 +13,7 @@
   - [R6](#r6)
   - [R7](#r7)
   - [R8](#r8)
+  - [R9](#r9)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
@@ -147,6 +148,7 @@ iw dev wlp4s0f4u1 set channel 149
 
 - Preuves : l'iPhone envoie `/Upload` avec `Content-Type: application/x-dvzip`, qu'OpenDrop 0.13.0 refuse (essai 20). La copie brute de 3,76 Mo (essai 21) se lit ainsi : chaque bloc commence par sa longueur sur 4 octets (big-endian). Si le bit de poids fort est à 1, le bloc est stocké tel quel, sinon c'est un flux zlib de 128 Kio une fois décompressé. Les blocs mis bout à bout forment une archive cpio (format odc), qui contient la photo intacte.
 - Correctif : `patches/opendrop-dvzip.patch` décode ce format avant l'extraction. Si l'extraction échoue, la copie brute est gardée dans `out/received/` pour l'étudier.
+- L'archive contient aussi, pour chaque fichier, un fichier AppleDouble `._nom` avec des métadonnées macOS (essai 23). Le correctif les ignore à l'extraction.
 - Date : 2026-11-25
 - Produit par : `patches/opendrop-dvzip.patch`, appliqué par `scripts/setup-opendrop.sh`
 
@@ -156,9 +158,18 @@ bit de poids fort de la longueur = 1 : bloc stocké sans compression
 bit de poids fort de la longueur = 0 : bloc zlib
 ```
 
+### R9
+
+**Après une fermeture de la feuille de partage, l'iPhone ne revoit le PC que si celui-ci réannonce son service mDNS.**
+
+- Preuves : sans réannonce, l'iPhone revenu sur AWDL n'envoie aucune requête et ne revoit pas "poc" (essai 22). Avec la réannonce, "poc" réapparaît 6 s après la réouverture et un deuxième fichier est reçu (essai 23).
+- Mécanisme : `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop quand il reçoit `SIGUSR1`. `scripts/airdrop-poc.sh` envoie ce signal à chaque `add peer` d'OWL, une fois qu'OpenDrop a fait sa première annonce : avant, le signal l'arrêterait.
+- Date : 2026-11-25
+- Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
+
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 22 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 23 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -184,6 +195,7 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 20 | 2026-11-25 | `receive` sur la clé en mode moniteur simple | "poc" visible, 3 connexions TLS, environ 3,3 Ko acquittés par connexion. OpenDrop refuse `/Upload` (`Unsupported content-type: application/x-dvzip`) | Les réponses du PC passent. Format de fichier inconnu |
 | 21 | 2026-11-25 | Même essai, OpenDrop accepte `x-dvzip` et garde la copie brute | 3,76 Mo reçus, extraction échouée. Décodage à la main : archive cpio avec la photo intacte | Format `x-dvzip` compris |
 | 22 | 2026-11-25 | Même essai, avec le décodage dans OpenDrop. Puis feuille fermée et rouverte | Photo de 3,59 Mo extraite à 0,93 Mo/s, "Envoyé" sur l'iPhone. Ensuite, OWL retrouve l'iPhone, mais l'iPhone n'envoie plus rien et ne revoit pas "poc" | Premier fichier reçu sans intervention. Il manque une réannonce |
+| 23 | 2026-11-25 | `receive` avec la réannonce sur `add peer`. Une image, feuille fermée puis rouverte, un deuxième fichier | Image PNG de 347 Ko reçue (0,44 Mo/s). Après la réouverture, `Re-announcing service`, "poc" réapparaît et un PDF de 6 Ko est reçu (un fichier texte converti par l'iPhone). Fichiers `._nom` en plus | La réannonce suffit. Fichiers AppleDouble à ignorer
 
 ## Pistes écartées
 
@@ -200,7 +212,6 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Questions ouvertes
 
-- **Comment faire revoir le PC à l'iPhone sans relancer le script ?** Pendant l'essai 22, l'iPhone revenu n'envoie aucune requête, et OpenDrop n'envoie plus d'annonce mDNS. Hypothèse : l'iPhone a oublié "poc" en coupant AWDL et attend une annonce. Essai prévu : réannoncer le service quand OWL affiche `add peer`, ou à intervalles réguliers.
 - **Peut-on recevoir les originaux en HEIC ?** Essai prévu : déclarer le HEIC dans `ReceiverMediaCapabilities` (bloc en commentaire dans OpenDrop) et vérifier le format reçu.
 - **Quel débit ?** Une seule mesure à 0,93 Mo/s. Essai prévu : plusieurs envois, dont un fichier de plus de 50 Mo, avec `summarize-run.sh`.
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).

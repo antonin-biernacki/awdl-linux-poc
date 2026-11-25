@@ -55,7 +55,7 @@
  
              def readinto(self, buf):
                  self._next_chunk()
-@@ -290,6 +305,49 @@
+@@ -290,18 +305,82 @@
                  self.total += length
                  return length
  
@@ -105,9 +105,17 @@
          def extract_stream(stream, flags=0):
              """
              Extracts an archive from memory into the current directory.
-@@ -298,10 +356,25 @@
+             """
+ 
              with libarchive.read.stream_reader(stream) as archive:
-                 libarchive.extract.extract_entries(archive, flags)
+-                libarchive.extract.extract_entries(archive, flags)
++                # Skip the AppleDouble files (._name) that hold macOS metadata
++                entries = (
++                    entry
++                    for entry in archive
++                    if not os.path.basename(entry.pathname).startswith("._")
++                )
++                libarchive.extract.extract_entries(entries, flags)
  
 -        logger.info("Receiving file(s) ...")
 +        logger.info(f"Receiving file(s) ({content_type}) ...")

@@ -1,0 +1,36 @@
+--- a/opendrop/server.py
++++ b/opendrop/server.py
+@@ -22,7 +22,9 @@
+ import os
+ import platform
+ import plistlib
++import signal
+ import socket
++import threading
+ import time
+ import zlib
+ from http.server import BaseHTTPRequestHandler, HTTPServer
+@@ -90,11 +92,23 @@
+         return info
+ 
+     def start_service(self):
++        # SIGUSR1 re-announces the service, e.g. when the Apple device comes
++        # back on AWDL after closing its share sheet and has forgotten us.
++        # Installed before the first announcement, which callers wait for.
++        signal.signal(signal.SIGUSR1, self._on_reannounce_signal)
+         logger.info(
+             f"Announcing service: host {self.config.host_name}, address {self.ip_addr}, port {self.config.port}"
+         )
+         self.zeroconf.register_service(self.service_info)
+ 
++    def _on_reannounce_signal(self, signum, frame):
++        # update_service blocks for several hundred ms: keep the handler short
++        threading.Thread(target=self.reannounce_service, daemon=True).start()
++
++    def reannounce_service(self):
++        logger.info("Re-announcing service")
++        self.zeroconf.update_service(self.service_info)
++
+     def _init_server(self):
+         try:
+             httpd = self.ServerClass(self.serveraddress, self.Handler)
