@@ -19,6 +19,10 @@
 # Summarize a run with: bash scripts/diagnostics/summarize-run.sh
 # Set TCP_MSS (bytes) to cap the TCP segments sent to the Apple device
 # (default 0: no cap). Tested with 500: it did not help with this card.
+# Set ACTIVE_MONITOR=1 for an adapter with active monitor mode (e.g. MT7612U):
+# no hotspot trick, IFACE in active monitor mode (it ACKs incoming frames).
+# mac80211 only tunes an active monitor interface through its virtual monitor,
+# which exists only if a plain monitor interface (HELPER_IFACE) opens first.
 set -u
 
 IFACE=${IFACE:-wlp2s0}
@@ -29,6 +33,8 @@ CAPTURE=${CAPTURE:-0}
 OWL_ARGS=${OWL_ARGS:-}
 OPENDROP_ARGS=${OPENDROP_ARGS:-}
 TCP_MSS=${TCP_MSS:-0}
+ACTIVE_MONITOR=${ACTIVE_MONITOR:-0}
+HELPER_IFACE=pocmon0
 NFT_TABLE=airdrop_poc
 HOTSPOT_NAME=poc-hotspot
 
@@ -82,6 +88,7 @@ restore() {
     done
     stop_process "$OWL_PID"
     nmcli connection delete "$HOTSPOT_NAME" >/dev/null 2>&1
+    iw dev "$HELPER_IFACE" del 2>/dev/null
     ip link set "$IFACE" down
     iw dev "$IFACE" set type managed
     ip link set "$IFACE" up
@@ -117,19 +124,34 @@ awdl0_dad_failed() {
     ip -6 addr show dev awdl0 dadfailed 2>/dev/null | grep -q inet6
 }
 
-echo "== Hotspot on channel $CHANNEL (so the firmware operates on it)"
-nmcli device wifi hotspot ifname "$IFACE" con-name "$HOTSPOT_NAME" \
-    ssid "$HOTSPOT_NAME" band a channel "$CHANNEL" password "poc-hotspot" >/dev/null ||
-    die "hotspot failed"
-sleep 5
-nmcli connection down "$HOTSPOT_NAME" >/dev/null
+if [ "$ACTIVE_MONITOR" = 1 ]; then
+    echo "== Active monitor mode on channel $CHANNEL (helper: $HELPER_IFACE)"
+    phy=phy$(iw dev "$IFACE" info | awk '/wiphy/ {print $2}')
+    nmcli device set "$IFACE" managed no
+    ip link set "$IFACE" down
+    iw dev "$HELPER_IFACE" del 2>/dev/null # left over by a killed run
+    iw phy "$phy" interface add "$HELPER_IFACE" type monitor || die "cannot add $HELPER_IFACE"
+    ip link set "$HELPER_IFACE" up
+    iw dev "$HELPER_IFACE" set channel "$CHANNEL" || die "cannot tune $HELPER_IFACE"
+    iw dev "$IFACE" set type monitor
+    iw dev "$IFACE" set monitor active otherbss control || die "no active monitor mode on $IFACE"
+    ip link set "$IFACE" up
+    iw dev "$IFACE" set channel "$CHANNEL"
+else
+    echo "== Hotspot on channel $CHANNEL (so the firmware operates on it)"
+    nmcli device wifi hotspot ifname "$IFACE" con-name "$HOTSPOT_NAME" \
+        ssid "$HOTSPOT_NAME" band a channel "$CHANNEL" password "poc-hotspot" >/dev/null ||
+        die "hotspot failed"
+    sleep 5
+    nmcli connection down "$HOTSPOT_NAME" >/dev/null
 
-echo "== Monitor mode on channel $CHANNEL"
-nmcli device set "$IFACE" managed no
-ip link set "$IFACE" down
-iw dev "$IFACE" set type monitor
-ip link set "$IFACE" up
-iw dev "$IFACE" set channel "$CHANNEL"
+    echo "== Monitor mode on channel $CHANNEL"
+    nmcli device set "$IFACE" managed no
+    ip link set "$IFACE" down
+    iw dev "$IFACE" set type monitor
+    ip link set "$IFACE" up
+    iw dev "$IFACE" set channel "$CHANNEL"
+fi
 
 # Make the Apple device believe our MSS is TCP_MSS: the kernel then never sends
 # it TCP segments larger than that (rewrites the MSS option of incoming SYNs).

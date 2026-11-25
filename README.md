@@ -1,13 +1,13 @@
 <!-- clean-readme: type=recherche; langue=fr; v=2 -->
 # Preuve de concept AirDrop sur Linux
 
-Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Aujourd'hui, l'iPhone voit le PC et s'y connecte, mais aucun fichier n'a encore été reçu.
+Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC reçoit des photos envoyées par l'iPhone.
 
-> **État** : En pause. La couche AWDL fonctionne et l'iPhone se connecte au PC, mais les réponses du PC n'arrivent pas à l'iPhone. La clé USB MediaTek MT7612U est reçue et reconnue. Reprise avec les essais sur cette clé, pour vérifier si la carte Wi-Fi est en cause.
+> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des photos de l'iPhone. Après une fermeture de la feuille de partage, l'iPhone ne revoit plus le PC sans relancer le script. L'envoi depuis le PC reste bloqué par l'annonce Bluetooth LE.
 
 ## Avertissement
 
-Ce dépôt est un travail d'étude personnel sur un protocole propriétaire. Les scripts passent la carte Wi-Fi en mode moniteur, émettent des trames brutes et demandent les droits root : le Wi-Fi habituel est coupé pendant les essais.
+Ce dépôt est un travail d'étude personnel sur un protocole propriétaire, fait pour l'interopérabilité entre mes propres appareils. Ce projet n'est ni affilié à Apple Inc. ni approuvé par Apple. Les scripts passent la carte Wi-Fi choisie en mode moniteur, émettent des trames brutes et demandent les droits root : cette carte ne sert plus au Wi-Fi habituel pendant les essais.
 
 ## Sommaire
 
@@ -30,13 +30,13 @@ AirDrop ne passe pas par le réseau local. Il crée un réseau Wi-Fi direct entr
 
 ## Question de recherche
 
-Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, peut-elle faire tourner AWDL et échanger un fichier AirDrop avec un iPhone ? Si oui, que faut-il contourner pour y arriver ?
+Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, peut-elle faire tourner AWDL et échanger un fichier AirDrop avec un iPhone ? Si oui, que faut-il contourner pour y arriver ? Sinon, une clé USB courante suffit-elle ?
 
 ## Avancement
 
-La couche AWDL fonctionne sur ma carte grâce à deux contournements : OWL se synchronise avec l'iPhone. En mode `receive`, l'iPhone voit le PC et ouvre des connexions TLS vers le port 8771. Presque aucune réponse du PC n'arrive à l'iPhone, donc aucun fichier n'a été reçu. Les modes `find` et `send` sont bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop.
+Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournements, et l'iPhone ouvre des connexions TLS vers le PC. Les réponses du PC se perdent, donc aucun fichier ne passe.
 
-Je soupçonne la carte. La clé USB MT7612U est reçue (le 2026-11-24) : le pilote `mt76x2u` la reconnaît sans installation et elle gère le mode moniteur actif. Les essais AWDL avec cette clé restent à faire. Détail dans [ROADMAP.md](ROADMAP.md).
+Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu deux photos de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Restent à faire : se réannoncer quand l'iPhone revient, recevoir les photos en HEIC et mesurer le débit. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -45,8 +45,9 @@ Je soupçonne la carte. La clé USB MT7612U est reçue (le 2026-11-24) : le pilo
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
 5. **R5** : `find` et `send` ne trouvent pas l'iPhone, qui n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE. [Détail](RESULTATS.md#r5)
+6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (3,6 Mo à 0,93 Mo/s). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). [Détail](RESULTATS.md#r6)
 
-Les 14 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 22 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -56,7 +57,7 @@ AirDrop empile quatre briques : Bluetooth LE (annonce), AWDL (réseau Wi-Fi pair
 flowchart LR
     I[iPhone<br/>AirDrop 'Tout le monde'] <-- trames AWDL<br/>canal 149 --> W
     subgraph PC Linux
-        W[wlp2s0<br/>mode moniteur] <--> O[OWL<br/>implémentation AWDL]
+        W[carte ou clé USB<br/>mode moniteur] <--> O[OWL<br/>implémentation AWDL]
         O <--> A[awdl0<br/>interface IPv6]
         A <-- mDNS + HTTPS --> D[OpenDrop<br/>find / receive / send]
     end
@@ -95,7 +96,15 @@ sudo bash scripts/airdrop-poc.sh send FICHIER
 bash scripts/diagnostics/summarize-run.sh
 ```
 
-`find` liste les appareils à portée, `receive` rend le PC visible, `send` cherche 30 s puis envoie à l'appareil 0. `summarize-run.sh`, lancé sans `sudo` après un essai avec `CAPTURE=1`, résume les pairs vus, les trames reçues, les requêtes de l'iPhone et les fichiers reçus. Le Wi-Fi habituel est coupé pendant l'essai et rétabli à la sortie. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
+`find` liste les appareils à portée, `receive` rend le PC visible, `send` cherche 30 s puis envoie à l'appareil 0. `summarize-run.sh`, lancé sans `sudo` après un essai avec `CAPTURE=1`, résume les pairs vus, les trames reçues, les requêtes de l'iPhone et les fichiers reçus. Sans `IFACE`, le script utilise la carte intégrée `wlp2s0` : le Wi-Fi habituel est coupé pendant l'essai et rétabli à la sortie.
+
+Réception avec la clé USB (R6), le Wi-Fi habituel restant connecté. Le nom de l'interface de la clé est donné par `iw dev` :
+
+```bash
+sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive
+```
+
+Les fichiers reçus arrivent dans `out/received/`. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
 
 ## Structure du dépôt
 
@@ -103,9 +112,10 @@ bash scripts/diagnostics/summarize-run.sh
 scripts/
     airdrop-poc.sh                # preuve de concept : find, receive, send
     setup-opendrop.sh             # environnement Python d'OpenDrop et correctifs
-    diagnostics/                  # scripts qui ont servi à caractériser la carte
+    diagnostics/                  # scripts qui ont servi à caractériser les cartes
 patches/
     opendrop-request-body.patch   # OpenDrop : corps de requête en transfert chunked
+    opendrop-dvzip.patch          # OpenDrop : fichiers reçus au format x-dvzip
 docs/
     GUIDE.md                      # installation détaillée, options, vérifier une carte
 out/                              # créé à l'exécution, ignoré par git : journaux, captures, fichiers reçus
@@ -123,6 +133,7 @@ Les scripts de `diagnostics/` sont gardés pour référence et contiennent des c
 | Carte Wi-Fi    | Realtek RTL8852BE (PCIe, 802.11ax), interface `wlp2s0` |
 | Pilote         | `rtw89_8852be`                                         |
 | Firmware       | 0.29.29.18 (`linux-firmware-20261019`)                 |
+| Clé USB        | COMFAST CF-922AC, MediaTek MT7612U (`0e8d:7612`), pilote `mt76x2u` |
 | Appareil Apple | iPhone, AirDrop réglé sur "Tout le monde"              |
 
 OWL demande à la carte bien plus qu'une connexion Wi-Fi classique :
@@ -130,24 +141,25 @@ OWL demande à la carte bien plus qu'une connexion Wi-Fi classique :
 | Fonction                   | Rôle                                                   | RTL8852BE | MT7612U (clé USB) |
 |----------------------------|--------------------------------------------------------|-----------|-------------------|
 | Mode moniteur              | Recevoir toutes les trames du canal                    | Oui | Oui |
-| Injection de trames        | Émettre des trames AWDL                                | Oui (testée sur le canal 157) | Non testée |
-| Mode moniteur actif        | Acquitter (ACK) les trames reçues                      | Non | Oui (annoncé par `iw`) |
-| Réception sur 6, 44 et 149 | Écouter les canaux AWDL                                | Seulement avec le contournement de [R2](RESULTATS.md#r2) | Canaux disponibles, réception non testée |
+| Injection de trames        | Émettre des trames AWDL                                | Oui (testée sur le canal 157) | Oui (canaux 6, 44 et 149) |
+| Mode moniteur actif        | Acquitter (ACK) les trames reçues                      | Non | Oui, mais l'iPhone n'envoie alors rien ([R7](RESULTATS.md#r7)) |
+| Réception sur 6, 44 et 149 | Écouter les canaux AWDL                                | Seulement avec le contournement de [R2](RESULTATS.md#r2) | Oui, sans contournement |
 
-Sans contournement, il faut une carte avec mode moniteur actif. L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Côté clés USB, la MediaTek MT7612U (pilote `mt76`) est réputée compatible. Les commandes pour vérifier une autre carte sont dans [docs/GUIDE.md](docs/GUIDE.md#matériel).
+L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la MT7612U, le mode moniteur simple suffit pour recevoir un fichier. Les commandes pour vérifier une autre carte sont dans [docs/GUIDE.md](docs/GUIDE.md#matériel).
 
 ## Questions ouvertes
 
-- La RTL8852BE est-elle la cause des pertes ? En mode moniteur simple, elle n'acquitte aucune trame et n'émet chaque trame qu'une fois. J'ai reçu une clé USB COMFAST CF-922AC, à puce MT7612U (pilote `mt76x2u`), pour refaire les essais.
-- Le firmware émet-il les trames injectées en retard, hors des courtes fenêtres où l'iPhone écoute le canal ?
-- Avec la clé, les contournements de R1 et R2 sont-ils encore nécessaires, et quel débit obtient-on ?
+- Comment faire revoir le PC à l'iPhone après une fermeture de la feuille de partage, sans relancer le script ? Piste : réannoncer le service mDNS quand OWL retrouve l'iPhone.
+- Peut-on recevoir les photos en HEIC, en déclarant ce format dans la réponse d'OpenDrop ?
+- Quel débit obtient-on sur plusieurs envois, et avec des fichiers plus gros ?
+- Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?
 
-Le protocole d'essai avec la clé est dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
+Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
 
 ## Limites
 
 - Peu de cartes intégrées gèrent le mode moniteur avec injection, et la mienne demande deux contournements non documentés
-- Le Wi-Fi habituel est coupé tant qu'AWDL tourne, car la carte lui est dédiée
+- La carte qui fait tourner AWDL lui est dédiée : avec la carte intégrée, le Wi-Fi habituel est coupé, d'où l'intérêt d'une clé USB
 - Sans certificat signé par Apple, l'iPhone ne voit le PC qu'en mode "Tout le monde", qui se désactive seul au bout de 10 minutes
 - OWL (dernier commit de code en janvier 2022) et OpenDrop (avril 2021) ne sont plus maintenus : une mise à jour d'iOS peut tout casser
 - Le mode moniteur et OWL demandent les droits root

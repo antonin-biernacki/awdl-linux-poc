@@ -10,13 +10,18 @@
   - [R3](#r3)
   - [R4](#r4)
   - [R5](#r5)
+  - [R6](#r6)
+  - [R7](#r7)
+  - [R8](#r8)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
 
 ## Résumé
 
-Sur une RTL8852BE, la couche AWDL fonctionne avec deux contournements : pas de mode moniteur actif, et une réception limitée au dernier canal utilisé par le firmware. L'iPhone voit alors le PC et ouvre des connexions TLS. Les réponses du PC se perdent, et aucun fichier n'a été reçu. Les captures pointent vers la carte, qui n'acquitte rien et n'émet chaque trame qu'une fois.
+Sur une RTL8852BE, la couche AWDL fonctionne avec deux contournements : pas de mode moniteur actif, et une réception limitée au dernier canal utilisé par le firmware. L'iPhone voit alors le PC et ouvre des connexions TLS, mais les réponses du PC se perdent.
+
+Avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone. La carte était donc bien en cause. Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer des données. Les iOS récents envoient les fichiers au format `x-dvzip`, une suite de blocs zlib autour de l'archive cpio habituelle.
 
 ## Méthode
 
@@ -35,7 +40,9 @@ Observation :
 - journaux d'OWL (`out/owl.log`) et d'OpenDrop (`out/opendrop.log`) ;
 - avec `CAPTURE=1`, captures de `awdl0` (`out/awdl0.pcap`) et des trames Wi-Fi brutes (`out/wlan.pcap`), résumées par `scripts/diagnostics/summarize-run.sh` ;
 - les trames AWDL sont repérées avec le dissecteur `awdl` de `tshark` ;
-- les scripts de `scripts/diagnostics/` ont servi aux essais 1 à 8 (injection, scan passif, réception canal par canal, astuce du point d'accès, OWL au premier plan).
+- les scripts de `scripts/diagnostics/` ont servi aux essais 1 à 8 (injection, scan passif, réception canal par canal, astuce du point d'accès, OWL au premier plan) ;
+- avec la clé USB, `IFACE` désigne l'interface de la clé : le script ne touche qu'à elle et la carte intégrée reste connectée. `ACTIVE_MONITOR=1` remplace les étapes 1 et 2 par le montage de [R7](#r7) ;
+- `scripts/diagnostics/adapter-test.sh` teste une carte canal par canal : fréquence réellement écoutée, trames AWDL reçues, injection (essais 15 et 17).
 
 Remarques :
 
@@ -92,6 +99,7 @@ iw dev wlp2s0 set channel 149
 - Preuves : pendant l'essai 13, l'iPhone reçoit nos petits paquets (SYN-ACK), mais nos segments de 1043 et 1378 octets (la réponse TLS) sont retransmis pendant 5 secondes sans être acquittés. L'essai 11 est le seul où la réponse TLS du PC est passée. Découper la réponse en segments de 488 octets ne change rien (essai 14).
 - Captures : sur 452 trames de données envoyées par l'iPhone lors d'un essai, 388 sont des retransmissions, car la carte n'acquitte rien. Aucune des 235 trames du PC vers l'iPhone n'est retransmise au niveau Wi-Fi : une trame qui part quand l'iPhone écoute un autre canal est perdue.
 - L'iPhone envoie des accusés de réception Wi-Fi à certaines de nos trames, mais je ne peux pas les associer de façon fiable aux trames émises : la capture horodate nos trames quand elles sont confiées à la carte, pas quand elles partent.
+- Avec la clé MT7612U, le problème disparaît ([R6](#r6)) : il venait de la RTL8852BE ou de son pilote.
 - Date : inconnue
 - Produit par : `sudo CAPTURE=1 bash scripts/airdrop-poc.sh receive`, puis `bash scripts/diagnostics/summarize-run.sh`
 
@@ -103,9 +111,54 @@ iw dev wlp2s0 set channel 149
 - Date : inconnue
 - Produit par : `sudo bash scripts/airdrop-poc.sh find`
 
+### R6
+
+**Avec une clé USB MT7612U en mode moniteur simple, le PC reçoit des photos de l'iPhone.**
+
+- Preuves : en mode moniteur simple, la clé écoute le canal demandé sans point d'accès éphémère (essai 16). Elle reçoit les trames AWDL de l'iPhone sur 149 et 6, et injecte sur 6, 44 et 149 (essais 17 et 18). En `receive`, l'iPhone voit "poc" et acquitte environ 3,3 Ko de réponse TLS par connexion, contre 0 avec la RTL8852BE (essai 20). Une photo de 3,59 Mo est reçue et extraite, l'iPhone affiche "Envoyé" (essai 22).
+- Débit : 0,93 Mo/s pour cette photo, mesuré par OpenDrop sur un seul envoi.
+- Le script ne touche qu'à la clé : la carte intégrée reste connectée (vérifié après les essais 15 et 17).
+- L'iPhone convertit ses photos en JPEG, car OpenDrop ne déclare pas le format HEIC dans sa réponse (`ReceiverMediaCapabilities`).
+- Le script lance encore le point d'accès éphémère de R2 sur la clé. D'après l'essai 16, il n'est plus nécessaire.
+- Date : 2026-11-25
+- Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
+
+### R7
+
+**En mode moniteur actif, la MT7612U ne change de canal qu'avec une interface d'aide, et l'iPhone ne lui envoie aucune donnée.**
+
+- Preuves : seule en mode moniteur actif, la clé reste sur 2412 MHz (canal 1), quel que soit le canal demandé, et `iw` ne signale aucune erreur (essais 15 et 16). Si une interface moniteur simple est ouverte avant l'interface active, le canal suit (essai 17). OWL se synchronise alors avec l'iPhone, mais l'iPhone n'envoie aucune trame de données en 160 s et n'affiche pas "poc" (essai 19).
+- Explication probable : le noyau ne règle le canal d'une interface moniteur qu'à travers une interface moniteur "virtuelle", qu'il ne crée que si une interface moniteur simple s'ouvre en premier. Je ne sais pas encore pourquoi l'iPhone n'envoie rien dans ce mode.
+- Date : 2026-11-25
+- Produit par : `scripts/diagnostics/adapter-test.sh`, `ACTIVE_MONITOR=1` dans `scripts/airdrop-poc.sh`
+
+```bash
+iw phy phy2 interface add pocmon0 type monitor
+ip link set pocmon0 up
+iw dev wlp4s0f4u1 set type monitor
+iw dev wlp4s0f4u1 set monitor active otherbss control
+ip link set wlp4s0f4u1 up
+iw dev wlp4s0f4u1 set channel 149
+```
+
+### R8
+
+**Les iOS récents envoient les fichiers au format `x-dvzip` : une suite de blocs zlib autour d'une archive cpio.**
+
+- Preuves : l'iPhone envoie `/Upload` avec `Content-Type: application/x-dvzip`, qu'OpenDrop 0.13.0 refuse (essai 20). La copie brute de 3,76 Mo (essai 21) se lit ainsi : chaque bloc commence par sa longueur sur 4 octets (big-endian). Si le bit de poids fort est à 1, le bloc est stocké tel quel, sinon c'est un flux zlib de 128 Kio une fois décompressé. Les blocs mis bout à bout forment une archive cpio (format odc), qui contient la photo intacte.
+- Correctif : `patches/opendrop-dvzip.patch` décode ce format avant l'extraction. Si l'extraction échoue, la copie brute est gardée dans `out/received/` pour l'étudier.
+- Date : 2026-11-25
+- Produit par : `patches/opendrop-dvzip.patch`, appliqué par `scripts/setup-opendrop.sh`
+
+```text
+[longueur 4 octets][bloc][longueur 4 octets][bloc]...
+bit de poids fort de la longueur = 1 : bloc stocké sans compression
+bit de poids fort de la longueur = 0 : bloc zlib
+```
+
 ## Essais
 
-Les dates exactes des essais n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 22 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -123,10 +176,19 @@ Les dates exactes des essais n'ont pas été notées. Ils ont tous été faits a
 | 12 | inconnue | `receive`, `OWL_ARGS="-f -vv"`, deux fois | Aucune donnée de l'iPhone. OWL bascule plusieurs fois entre l'iPhone (-37 dBm) et un appareil lointain (-87 dBm) | `-f` (pas de filtre RSSI) fait suivre à OWL des appareils trop lointains |
 | 13 | inconnue | `receive`, sans `-f` | Synchronisation stable, 7 connexions TLS de l'iPhone, aucune réponse du PC acquittée | L'iPhone reçoit nos petits paquets (SYN-ACK) mais pas la réponse TLS |
 | 14 | inconnue | `receive`, sans `-f`, `TCP_MSS=500` | Réponse TLS découpée en segments de 488 octets, toujours rien d'acquitté | La taille des segments n'est pas la cause |
+| 15 | 2026-11-25 | Clé en mode moniteur actif, canaux 6, 44 et 149 | Toutes les trames reçues sont à 2412 MHz. Injection sans réponse | La clé ne change pas de canal dans ce mode |
+| 16 | 2026-11-25 | Changement de canal en mode simple, puis actif (4 variantes) | Simple : 6 donne 2437 MHz, 149 donne 5745 MHz. Actif : toujours 2412 MHz | Le mode simple n'a pas besoin du point d'accès éphémère |
+| 17 | 2026-11-25 | Interface moniteur simple ouverte d'abord, puis interface active | Le canal suit (149, 6, 44). Injection : "Injection is working!" sur 6, 44 et 149, 83 à 100 % de réponses des points d'accès | Montage trouvé pour le mode actif |
+| 18 | 2026-11-25 | Écoute des canaux 149 et 6, feuille de partage ouverte | 289 trames AWDL de l'iPhone en 26 s sur 149, 116 sur 6, entre -24 et -34 dBm | La clé reçoit l'iPhone sans contournement |
+| 19 | 2026-11-25 | `receive` avec `ACTIVE_MONITOR=1`, 160 s | `add peer`, 1586 trames AWDL de l'iPhone, 3885 émises par OWL, aucune donnée de l'iPhone, "poc" invisible | Le mode actif bloque l'échange |
+| 20 | 2026-11-25 | `receive` sur la clé en mode moniteur simple | "poc" visible, 3 connexions TLS, environ 3,3 Ko acquittés par connexion. OpenDrop refuse `/Upload` (`Unsupported content-type: application/x-dvzip`) | Les réponses du PC passent. Format de fichier inconnu |
+| 21 | 2026-11-25 | Même essai, OpenDrop accepte `x-dvzip` et garde la copie brute | 3,76 Mo reçus, extraction échouée. Décodage à la main : archive cpio avec la photo intacte | Format `x-dvzip` compris |
+| 22 | 2026-11-25 | Même essai, avec le décodage dans OpenDrop. Puis feuille fermée et rouverte | Photo de 3,59 Mo extraite à 0,93 Mo/s, "Envoyé" sur l'iPhone. Ensuite, OWL retrouve l'iPhone, mais l'iPhone n'envoie plus rien et ne revoit pas "poc" | Premier fichier reçu sans intervention. Il manque une réannonce |
 
 ## Pistes écartées
 
-- **Filtre `tcpdump` écrit à la main pour repérer les trames AWDL** : il ne trouvait rien. Le dissecteur `awdl` de `tshark` le remplace.
+- **Filtre `tcpdump` écrit à la main pour repérer les trames AWDL** : il ne trouvait rien. Le dissecteur `awdl` de `tshark` le remplace. Avec la clé, les filtres sur le type de trame (`subtype action`) ou sur un octet (`wlan[24]`) ne trouvent rien non plus, alors que les trames sont dans la capture (essai 18). Le filtre sur le BSSID d'AWDL, celui qu'utilise OWL, fonctionne : `wlan addr3 00:25:00:ff:94:73`.
+- **Mode moniteur actif de la MT7612U** : la clé change de canal avec le montage de [R7](#r7), mais l'iPhone ne lui envoie rien (essai 19). L'option `ACTIVE_MONITOR` est gardée, désactivée par défaut.
 - **OWL sans filtre RSSI (`-f`)** : OWL suit alors des appareils trop lointains et perd l'iPhone (essai 12).
 - **Limiter la taille des segments TCP (`TCP_MSS`)** : avec `TCP_MSS=500`, le script réécrit l'option MSS des SYN reçus de l'iPhone (règle nftables dans la table `airdrop_poc`, supprimée à la sortie). L'essai 14 montre que ça ne suffit pas. L'option est gardée mais désactivée par défaut.
 
@@ -138,9 +200,8 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Questions ouvertes
 
-- **La carte est-elle la cause des pertes ?** Ma piste principale est le moment d'émission : si le firmware émet les trames injectées en retard, elles tombent hors des courtes fenêtres où l'iPhone écoute le canal. Une carte avec un autre pilote permet de trancher. J'ai reçu une clé USB COMFAST CF-922AC, à puce MediaTek MT7612U (pilote `mt76x2u` du noyau). Essai prévu :
-  1. vérifier la puce et ses capacités (`lsusb`, `iw list | grep -i "active monitor"`) : fait le 2026-11-24. `lsusb` affiche `0e8d:7612`, le pilote et le firmware se chargent sans installation, `iw` annonce le mode moniteur actif, et les canaux 6, 44 et 149 sont disponibles sans restriction ;
-  2. refaire le test d'injection et la réception sur les canaux 6, 44 et 149, pour savoir si les contournements de R1 et R2 sont encore nécessaires ;
-  3. relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 13, en regardant d'abord si l'iPhone acquitte les réponses du PC ;
-  4. si ça passe, recevoir un premier fichier, puis mesurer le débit.
-- **Peut-on garder le Wi-Fi habituel pendant les essais ?** Avec une clé USB, la carte interne reste connectée pendant qu'AWDL tourne sur la clé. À vérifier pendant l'essai avec la MT7612U.
+- **Comment faire revoir le PC à l'iPhone sans relancer le script ?** Pendant l'essai 22, l'iPhone revenu n'envoie aucune requête, et OpenDrop n'envoie plus d'annonce mDNS. Hypothèse : l'iPhone a oublié "poc" en coupant AWDL et attend une annonce. Essai prévu : réannoncer le service quand OWL affiche `add peer`, ou à intervalles réguliers.
+- **Peut-on recevoir les originaux en HEIC ?** Essai prévu : déclarer le HEIC dans `ReceiverMediaCapabilities` (bloc en commentaire dans OpenDrop) et vérifier le format reçu.
+- **Quel débit ?** Une seule mesure à 0,93 Mo/s. Essai prévu : plusieurs envois, dont un fichier de plus de 50 Mo, avec `summarize-run.sh`.
+- **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).
+- **Le point d'accès éphémère est-il inutile avec la clé ?** L'essai 16 le laisse penser. Essai prévu : `receive` sur la clé sans cette étape.

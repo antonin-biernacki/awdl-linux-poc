@@ -1,0 +1,136 @@
+--- a/opendrop/server.py
++++ b/opendrop/server.py
+@@ -19,10 +19,12 @@
+ import io
+ import json
+ import logging
++import os
+ import platform
+ import plistlib
+ import socket
+ import time
++import zlib
+ from http.server import BaseHTTPRequestHandler, HTTPServer
+ 
+ import libarchive
+@@ -243,7 +245,9 @@
+         self.wfile.write(ask_resp_binary)
+ 
+     def handle_upload(self):
+-        if self.headers.get("content-type", "").lower() != "application/x-cpio":
++        # Recent iOS versions send application/x-dvzip instead of x-cpio
++        content_type = self.headers.get("content-type", "").lower()
++        if content_type not in ("application/x-cpio", "application/x-dvzip"):
+             logger.warning(
+                 f"Unsupported content-type: {self.headers.get('content-type')}"
+             )
+@@ -270,17 +274,28 @@
+             return
+ 
+         class HTTPChunkedReader(io.RawIOBase):
+-            def __init__(self, rfile, *args, **kwargs):
++            def __init__(self, rfile, raw_copy, *args, **kwargs):
+                 super().__init__(*args, **kwargs)
+                 self.rfile = rfile
++                self.raw_copy = raw_copy
+                 self.chunk = None
+                 self.total = 0
++                self.done = False
+ 
+             def _next_chunk(self):
++                if self.done:
++                    self.chunk = b""
++                    return
+                 if self.chunk is None or len(self.chunk) == 0:
+-                    length = int(self.rfile.readline().rstrip(), 16)
++                    length = int(self.rfile.readline().split(b";")[0].strip(), 16)
+                     self.chunk = self.rfile.read(length)
+                     self.rfile.readline()  # strip trailing \n\r
++                    self.raw_copy.write(self.chunk)
++                    if length == 0:
++                        self.done = True
++                        # skip optional trailers up to the final empty line
++                        while self.rfile.readline().strip():
++                            pass
+ 
+             def readinto(self, buf):
+                 self._next_chunk()
+@@ -290,6 +305,49 @@
+                 self.total += length
+                 return length
+ 
++        class DvzipReader(io.RawIOBase):
++            """
++            Decodes application/x-dvzip: a sequence of blocks, each made of a
++            4-byte big-endian length and the block data. The block is a zlib
++            stream, or stored as is when the high bit of the length is set.
++            The decoded data is the usual cpio archive.
++            """
++
++            def __init__(self, stream, *args, **kwargs):
++                super().__init__(*args, **kwargs)
++                self.stream = stream
++                self.data = b""
++
++            def _read_exactly(self, size):
++                data = b""
++                while len(data) < size:
++                    part = self.stream.read(size - len(data))
++                    if not part:
++                        break
++                    data += part
++                return data
++
++            def _next_block(self):
++                header = self._read_exactly(4)
++                if len(header) < 4:
++                    return False
++                length = int.from_bytes(header, "big")
++                block = self._read_exactly(length & 0x7FFFFFFF)
++                self.data = block if length & 0x80000000 else zlib.decompress(block)
++                return True
++
++            def readable(self):
++                return True
++
++            def readinto(self, buf):
++                while not self.data:
++                    if not self._next_block():
++                        return 0
++                length = min(len(self.data), len(buf))
++                buf[:length] = self.data[:length]
++                self.data = self.data[length:]
++                return length
++
+         def extract_stream(stream, flags=0):
+             """
+             Extracts an archive from memory into the current directory.
+@@ -298,10 +356,25 @@
+             with libarchive.read.stream_reader(stream) as archive:
+                 libarchive.extract.extract_entries(archive, flags)
+ 
+-        logger.info("Receiving file(s) ...")
++        logger.info(f"Receiving file(s) ({content_type}) ...")
+         start = time.time()
+-        reader = HTTPChunkedReader(self.rfile)
+-        extract_stream(reader)
++        # Keep the raw upload if extraction fails, to study its format
++        raw_name = f"upload-{time.strftime('%Y%m%d-%H%M%S')}.{content_type.split('-')[-1]}"
++        extracted = False
++        with open(raw_name, "wb") as raw_copy:
++            reader = HTTPChunkedReader(self.rfile, raw_copy)
++            try:
++                if content_type == "application/x-dvzip":
++                    extract_stream(DvzipReader(reader))
++                else:
++                    extract_stream(reader)
++                extracted = True
++            except Exception as error:  # pylint: disable=broad-except
++                logger.warning(f"Extraction failed ({error}), raw upload kept in {raw_name}")
++                while reader.read(65536):
++                    pass
++        if extracted:
++            os.remove(raw_name)
+ 
+         transferred = reader.total / 1024.0 / 1024.0
+         speed = transferred / (time.time() - start)
