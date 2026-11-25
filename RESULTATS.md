@@ -14,6 +14,7 @@
   - [R7](#r7)
   - [R8](#r8)
   - [R9](#r9)
+  - [R10](#r10)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
@@ -119,7 +120,7 @@ iw dev wlp2s0 set channel 149
 - Preuves : en mode moniteur simple, la clé écoute le canal demandé sans point d'accès éphémère (essai 16). Elle reçoit les trames AWDL de l'iPhone sur 149 et 6, et injecte sur 6, 44 et 149 (essais 17 et 18). En `receive`, l'iPhone voit "poc" et acquitte environ 3,3 Ko de réponse TLS par connexion, contre 0 avec la RTL8852BE (essai 20). Une photo de 3,59 Mo est reçue et extraite, l'iPhone affiche "Envoyé" (essai 22).
 - Débit : 0,93 Mo/s pour cette photo, mesuré par OpenDrop sur un seul envoi.
 - Le script ne touche qu'à la clé : la carte intégrée reste connectée (vérifié après les essais 15 et 17).
-- L'iPhone convertit ses photos en JPEG, car OpenDrop ne déclare pas le format HEIC dans sa réponse (`ReceiverMediaCapabilities`).
+- Dans cet essai, l'iPhone convertit ses photos en JPEG, car OpenDrop ne déclare pas le format HEIC dans sa réponse (`ReceiverMediaCapabilities`). Voir [R10](#r10).
 - Le script lance encore le point d'accès éphémère de R2 sur la clé. D'après l'essai 16, il n'est plus nécessaire.
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
@@ -167,9 +168,19 @@ bit de poids fort de la longueur = 0 : bloc zlib
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
 
+### R10
+
+**En annonçant les formats d'un Mac, le PC reçoit les photos en HEIC. Les vidéos HEVC restent converties en H.264, et les Live Photos arrivent sans leur vidéo.**
+
+- Preuves : avec les capacités média relevées sur macOS 10.13.3 (HEVC, HEIF/HEIC, Live Photos), la demande d'envoi de l'iPhone indique `ConvertMediaFormats = False` et deux photos arrivent en HEIC (essai 24). Une vidéo HEVC d'après l'iPhone arrive en H.264, 1080p, 30 images/s : sa date `creation_time` est celle de l'envoi, alors que `com.apple.quicktime.creationdate` est celle du tournage, donc l'iPhone la réencode pendant l'envoi. Une Live Photo arrive en image fixe seule (essais 24 et 25).
+- Débit : 0,97 à 1,09 Mo/s par fichier, mesuré par OpenDrop (essais 24 et 25).
+- Hypothèse non testée : OpenDrop se présente avec `ReceiverModelName = OpenDrop`. L'iPhone pourrait choisir les formats d'après ce modèle. OpenDrop permet de le changer avec son option `-m`.
+- Date : 2026-11-25
+- Produit par : `patches/opendrop-media-capabilities.patch`, puis `sudo IFACE=wlp4s0f4u1 CAPTURE=1 OPENDROP_ARGS="-d" bash scripts/airdrop-poc.sh receive` (`-d` enregistre les requêtes de l'iPhone dans `~/.opendrop/debug/`)
+
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 23 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 25 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -196,10 +207,13 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 21 | 2026-11-25 | Même essai, OpenDrop accepte `x-dvzip` et garde la copie brute | 3,76 Mo reçus, extraction échouée. Décodage à la main : archive cpio avec la photo intacte | Format `x-dvzip` compris |
 | 22 | 2026-11-25 | Même essai, avec le décodage dans OpenDrop. Puis feuille fermée et rouverte | Photo de 3,59 Mo extraite à 0,93 Mo/s, "Envoyé" sur l'iPhone. Ensuite, OWL retrouve l'iPhone, mais l'iPhone n'envoie plus rien et ne revoit pas "poc" | Premier fichier reçu sans intervention. Il manque une réannonce |
 | 23 | 2026-11-25 | `receive` avec la réannonce sur `add peer`. Une image, feuille fermée puis rouverte, un deuxième fichier | Image PNG de 347 Ko reçue (0,44 Mo/s). Après la réouverture, `Re-announcing service`, "poc" réapparaît et un PDF de 6 Ko est reçu (un fichier texte converti par l'iPhone). Fichiers `._nom` en plus | La réannonce suffit. Fichiers AppleDouble à ignorer
+| 24 | 2026-11-25 | Capacités média d'un Mac annoncées (`opendrop-media-capabilities.patch`). Deux photos, une Live Photo, une vidéo HEVC | `ConvertMediaFormats = False`. Photos en HEIC (1,06 Mo/s). Live Photo en image fixe seule. Vidéo réencodée en H.264 1080p pendant l'envoi | Photos d'origine. Vidéos et Live Photos encore converties |
+| 25 | 2026-11-25 | Annonce élargie (HEVC niveau 186, Dolby Vision `dvh1`, macOS 15.1), plus l'option iOS "Toutes les données des photos" | Vidéo toujours en H.264, Live Photo toujours en image fixe, 0,97 à 1,09 Mo/s. Un deuxième envoi du même fichier écrase le premier | L'annonce élargie ne change rien |
 
 ## Pistes écartées
 
 - **Filtre `tcpdump` écrit à la main pour repérer les trames AWDL** : il ne trouvait rien. Le dissecteur `awdl` de `tshark` le remplace. Avec la clé, les filtres sur le type de trame (`subtype action`) ou sur un octet (`wlan[24]`) ne trouvent rien non plus, alors que les trames sont dans la capture (essai 18). Le filtre sur le BSSID d'AWDL, celui qu'utilise OWL, fonctionne : `wlan addr3 00:25:00:ff:94:73`.
+- **Annonce élargie des formats** : HEVC jusqu'au niveau 6.2, Dolby Vision (`dvh1`) et macOS 15.1 ne changent rien aux vidéos ni aux Live Photos (essai 25). Le correctif garde les valeurs relevées sur un Mac.
 - **Mode moniteur actif de la MT7612U** : la clé change de canal avec le montage de [R7](#r7), mais l'iPhone ne lui envoie rien (essai 19). L'option `ACTIVE_MONITOR` est gardée, désactivée par défaut.
 - **OWL sans filtre RSSI (`-f`)** : OWL suit alors des appareils trop lointains et perd l'iPhone (essai 12).
 - **Limiter la taille des segments TCP (`TCP_MSS`)** : avec `TCP_MSS=500`, le script réécrit l'option MSS des SYN reçus de l'iPhone (règle nftables dans la table `airdrop_poc`, supprimée à la sortie). L'essai 14 montre que ça ne suffit pas. L'option est gardée mais désactivée par défaut.
@@ -212,7 +226,8 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Questions ouvertes
 
-- **Peut-on recevoir les originaux en HEIC ?** Essai prévu : déclarer le HEIC dans `ReceiverMediaCapabilities` (bloc en commentaire dans OpenDrop) et vérifier le format reçu.
+- **Comment recevoir les vidéos HEVC et les Live Photos d'origine ?** Essai prévu : changer le modèle annoncé avec `OPENDROP_ARGS="-m <modèle de Mac>"`, puis envoyer une vidéo et une Live Photo.
+- **Comment éviter d'écraser un fichier déjà reçu ?** Un deuxième envoi du même nom remplace le premier sans prévenir (essai 25). Piste : ajouter un suffixe au nom à l'extraction.
 - **Quel débit ?** Une seule mesure à 0,93 Mo/s. Essai prévu : plusieurs envois, dont un fichier de plus de 50 Mo, avec `summarize-run.sh`.
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).
 - **Le point d'accès éphémère est-il inutile avec la clé ?** L'essai 16 le laisse penser. Essai prévu : `receive` sur la clé sans cette étape.

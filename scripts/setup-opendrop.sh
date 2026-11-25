@@ -4,8 +4,9 @@
 # Usage (from anywhere, without sudo):
 #   bash scripts/setup-opendrop.sh
 #
-# Safe to run again: existing environment is reused, patches already applied
-# are skipped.
+# Safe to run again: the environment is reused, OpenDrop is reinstalled
+# unpatched, then every patch is applied in order. Checking each patch on its
+# own is not reliable: a later patch can change the context of an earlier one.
 set -eu
 
 OPENDROP_VERSION=0.13.0
@@ -21,14 +22,14 @@ PATCH_DIR="$REPO/patches"
 SITE_PACKAGES=$("$VENV/bin/python" -c \
     'import opendrop, os; print(os.path.dirname(os.path.dirname(opendrop.__file__)))')
 
+# Start again from the original OpenDrop files.
+"$VENV/bin/pip" install --quiet --disable-pip-version-check --force-reinstall --no-deps \
+    "opendrop==$OPENDROP_VERSION"
+rm -f "$SITE_PACKAGES"/opendrop/*.orig "$SITE_PACKAGES"/opendrop/*.rej
+
 for patch_file in "$PATCH_DIR"/opendrop-*.patch; do
-    name=$(basename "$patch_file")
-    if patch --dry-run --reverse --force --silent -p1 -d "$SITE_PACKAGES" <"$patch_file" >/dev/null; then
-        echo "already applied: $name"
-    else
-        patch --forward --silent -p1 -d "$SITE_PACKAGES" <"$patch_file"
-        echo "applied: $name"
-    fi
+    patch --forward --silent --no-backup-if-mismatch -p1 -d "$SITE_PACKAGES" <"$patch_file"
+    echo "applied: $(basename "$patch_file")"
 done
 
 echo "OpenDrop $OPENDROP_VERSION ready in $VENV"

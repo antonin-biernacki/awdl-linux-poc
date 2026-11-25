@@ -11,7 +11,8 @@ Les commandes sont dans [Reproduire](../README.md#reproduire). Points à connaî
 - l'iPhone envoie ses requêtes `/Discover` et `/Ask` sans en-tête `Content-Length`, a priori en transfert chunked. OpenDrop 0.13.0 plante alors (`int() argument must be ... not 'NoneType'`). `patches/opendrop-request-body.patch` lui apprend à lire ces requêtes ;
 - les iOS récents envoient les fichiers en `application/x-dvzip`, qu'OpenDrop 0.13.0 refuse. `patches/opendrop-dvzip.patch` décode ce format (voir [R8](../RESULTATS.md#r8)) et garde la copie brute dans `out/received/` si l'extraction échoue. Il ignore les fichiers AppleDouble `._nom` (métadonnées macOS) ;
 - `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop sur `SIGUSR1`. `scripts/airdrop-poc.sh` l'envoie quand OWL retrouve l'iPhone (voir [R9](../RESULTATS.md#r9)) ;
-- `scripts/setup-opendrop.sh` peut être relancé sans risque : il saute les correctifs déjà appliqués ;
+- `patches/opendrop-media-capabilities.patch` annonce à l'iPhone les formats d'un Mac, pour recevoir les photos en HEIC (voir [R10](../RESULTATS.md#r10)) ;
+- `scripts/setup-opendrop.sh` peut être relancé sans risque : il réinstalle OpenDrop d'origine, puis applique tous les correctifs dans l'ordre. Tester chaque correctif à part ne suffit pas, car un correctif peut modifier le contexte d'un autre ;
 - le pare-feu de Fedora Workstation ouvre les ports 1025 à 65535, donc le port 8771 d'OpenDrop et le mDNS passent sans réglage ;
 - les clés et le certificat d'OpenDrop sont générés au premier lancement dans `~/.opendrop/`.
 
