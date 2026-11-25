@@ -36,7 +36,7 @@ Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, pe
 
 Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournements, et l'iPhone ouvre des connexions TLS vers le PC. Les réponses du PC se perdent, donc aucun fichier ne passe.
 
-Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Restent à faire : ces deux formats, les fichiers de même nom et la mesure du débit. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
+Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : ces deux formats. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -45,9 +45,9 @@ Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. 
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
 5. **R5** : `find` et `send` ne trouvent pas l'iPhone, qui n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE. [Détail](RESULTATS.md#r5)
-6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (3,6 Mo à 0,93 Mo/s). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Les photos arrivent en HEIC, mais les vidéos sont encore converties ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
+6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Les photos arrivent en HEIC, mais les vidéos sont encore converties ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
 
-Les 25 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 28 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
@@ -104,7 +104,7 @@ Réception avec la clé USB (R6), le Wi-Fi habituel restant connecté. Le nom de
 sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive
 ```
 
-Les fichiers reçus arrivent dans `out/received/`. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
+Les fichiers reçus arrivent dans `out/received/`. Un fichier déjà présent n'est pas remplacé : le nouveau reçoit un suffixe ` (2)`. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
 
 ## Structure du dépôt
 
@@ -152,7 +152,6 @@ L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la 
 ## Questions ouvertes
 
 - Pourquoi l'iPhone convertit-il encore les vidéos HEVC en H.264 et envoie-t-il les Live Photos sans leur vidéo ?
-- Quel débit obtient-on sur plusieurs envois, et avec des fichiers plus gros ?
 - Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?
 
 Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
@@ -164,6 +163,7 @@ Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
 - Sans certificat signé par Apple, l'iPhone ne voit le PC qu'en mode "Tout le monde", qui se désactive seul au bout de 10 minutes
 - OWL (dernier commit de code en janvier 2022) et OpenDrop (avril 2021) ne sont plus maintenus : une mise à jour d'iOS peut tout casser
 - Le mode moniteur et OWL demandent les droits root
+- En `receive`, le PC accepte sans confirmation tout envoi d'un appareil à portée. L'extraction refuse les chemins qui sortent de `out/received/` et ignore les liens symboliques, mais rien ne filtre l'expéditeur
 
 ## Crédits
 

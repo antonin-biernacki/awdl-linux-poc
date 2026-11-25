@@ -31,11 +31,12 @@ Matériel et logiciels : voir [Matériel](README.md#matériel) dans le README.
 
 Le script `scripts/airdrop-poc.sh` :
 
-1. lance un point d'accès éphémère sur le canal 149, puis le coupe (contournement de [R2](#r2)) ;
+1. avec une carte `rtw89`, lance un point d'accès éphémère sur le canal 149, puis le coupe (contournement de [R2](#r2)). Avec un autre pilote, comme `mt76x2u`, cette étape est sautée ;
 2. passe la carte en mode moniteur simple sur ce canal (contournement de [R1](#r1)) ;
 3. démarre OWL en arrière-plan et attend que `awdl0` ait une adresse IPv6 ;
 4. lance OpenDrop sur `awdl0`, avec les droits de l'utilisateur ;
-5. à la sortie (fin normale, erreur ou Ctrl+C), arrête OWL, supprime le point d'accès et remet la carte en Wi-Fi normal.
+5. en `receive`, demande à OpenDrop de réannoncer son service quand l'iPhone commence une nouvelle recherche ([R9](#r9)) ;
+6. à la sortie (fin normale, erreur ou Ctrl+C), arrête OWL, supprime le point d'accès, remet la carte en Wi-Fi normal et copie les journaux et captures du run dans `out/runs/<date>-<mode>/` (`out/latest` pointe vers le dernier).
 
 Observation :
 
@@ -118,10 +119,10 @@ iw dev wlp2s0 set channel 149
 **Avec une clé USB MT7612U en mode moniteur simple, le PC reçoit des photos de l'iPhone.**
 
 - Preuves : en mode moniteur simple, la clé écoute le canal demandé sans point d'accès éphémère (essai 16). Elle reçoit les trames AWDL de l'iPhone sur 149 et 6, et injecte sur 6, 44 et 149 (essais 17 et 18). En `receive`, l'iPhone voit "poc" et acquitte environ 3,3 Ko de réponse TLS par connexion, contre 0 avec la RTL8852BE (essai 20). Une photo de 3,59 Mo est reçue et extraite, l'iPhone affiche "Envoyé" (essai 22).
-- Débit : 0,93 Mo/s pour cette photo, mesuré par OpenDrop sur un seul envoi.
+- Débit : 0,93 Mo/s pour cette photo, puis 0,97 à 1,30 Mo/s par envoi dans les essais 24 à 28, et 39,08 Mo (20 photos d'un coup) à 1,19 Mo/s (essai 26). Mesures d'OpenDrop.
 - Le script ne touche qu'à la clé : la carte intégrée reste connectée (vérifié après les essais 15 et 17).
 - Dans cet essai, l'iPhone convertit ses photos en JPEG, car OpenDrop ne déclare pas le format HEIC dans sa réponse (`ReceiverMediaCapabilities`). Voir [R10](#r10).
-- Le script lance encore le point d'accès éphémère de R2 sur la clé. D'après l'essai 16, il n'est plus nécessaire.
+- Sans point d'accès éphémère, la clé fonctionne aussi (essai 26) : le script ne le lance plus qu'avec un pilote `rtw89`.
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
 
@@ -150,6 +151,9 @@ iw dev wlp4s0f4u1 set channel 149
 - Preuves : l'iPhone envoie `/Upload` avec `Content-Type: application/x-dvzip`, qu'OpenDrop 0.13.0 refuse (essai 20). La copie brute de 3,76 Mo (essai 21) se lit ainsi : chaque bloc commence par sa longueur sur 4 octets (big-endian). Si le bit de poids fort est à 1, le bloc est stocké tel quel, sinon c'est un flux zlib de 128 Kio une fois décompressé. Les blocs mis bout à bout forment une archive cpio (format odc), qui contient la photo intacte.
 - Correctif : `patches/opendrop-dvzip.patch` décode ce format avant l'extraction. Si l'extraction échoue, la copie brute est gardée dans `out/received/` pour l'étudier.
 - L'archive contient aussi, pour chaque fichier, un fichier AppleDouble `._nom` avec des métadonnées macOS (essai 23). Le correctif les ignore à l'extraction.
+- Avec plusieurs fichiers, chacun est rangé dans un dossier temporaire `NSIRD_AirDrop_xxxxxx/` (essai 26). Le correctif retire ce dossier. Une Live Photo arrive dans un dossier `nom.pvt/`, gardé tel quel.
+- Le correctif renomme un fichier déjà présent en `nom (2).ext`, `nom (3).ext`... au lieu de l'écraser (essai 26).
+- En `receive`, n'importe quel appareil à portée peut envoyer une archive. L'extraction refuse donc les chemins absolus et `..`, et ignore les liens symboliques. Vérifié avec des archives piégées : rien n'est écrit hors du dossier de réception.
 - Date : 2026-11-25
 - Produit par : `patches/opendrop-dvzip.patch`, appliqué par `scripts/setup-opendrop.sh`
 
@@ -161,10 +165,11 @@ bit de poids fort de la longueur = 0 : bloc zlib
 
 ### R9
 
-**Après une fermeture de la feuille de partage, l'iPhone ne revoit le PC que si celui-ci réannonce son service mDNS.**
+**À chaque nouvelle recherche AirDrop, l'iPhone ne revoit le PC que si celui-ci réannonce son service mDNS.**
 
-- Preuves : sans réannonce, l'iPhone revenu sur AWDL n'envoie aucune requête et ne revoit pas "poc" (essai 22). Avec la réannonce, "poc" réapparaît 6 s après la réouverture et un deuxième fichier est reçu (essai 23).
-- Mécanisme : `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop quand il reçoit `SIGUSR1`. `scripts/airdrop-poc.sh` envoie ce signal à chaque `add peer` d'OWL, une fois qu'OpenDrop a fait sa première annonce : avant, le signal l'arrêterait.
+- Preuves : sans réannonce, l'iPhone revenu sur AWDL n'envoie aucune requête et ne revoit pas "poc" (essai 22). Avec une réannonce sur `add peer`, "poc" réapparaît 6 s après la réouverture et un deuxième fichier est reçu (essai 23). Mais si l'iPhone rouvre sa feuille sans quitter AWDL, OWL n'affiche pas `add peer` et "poc" disparaît (essai 27). Avec une réannonce aussi sur `changed channel sequence`, quatre envois de suite passent sans relancer le script (essai 28).
+- Mécanisme : `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop quand il reçoit `SIGUSR1`. `scripts/airdrop-poc.sh` envoie ce signal quand le journal d'OWL affiche `add peer` (l'iPhone revient sur AWDL) ou `changed channel sequence` (il commence une nouvelle recherche), au plus une fois toutes les 3 s.
+- Le signal ne part qu'après la ligne `Service announced` d'OpenDrop, et OpenDrop l'ignore jusque-là. Pendant l'enregistrement, zeroconf vérifie que le nom est libre : une réannonce à ce moment ressemble à un autre appareil qui porte le même nom, et OpenDrop s'arrête (`NonUniqueNameException`, essai 27).
 - Date : 2026-11-25
 - Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive`
 
@@ -180,7 +185,7 @@ bit de poids fort de la longueur = 0 : bloc zlib
 
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 25 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 28 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -209,6 +214,9 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 23 | 2026-11-25 | `receive` avec la réannonce sur `add peer`. Une image, feuille fermée puis rouverte, un deuxième fichier | Image PNG de 347 Ko reçue (0,44 Mo/s). Après la réouverture, `Re-announcing service`, "poc" réapparaît et un PDF de 6 Ko est reçu (un fichier texte converti par l'iPhone). Fichiers `._nom` en plus | La réannonce suffit. Fichiers AppleDouble à ignorer
 | 24 | 2026-11-25 | Capacités média d'un Mac annoncées (`opendrop-media-capabilities.patch`). Deux photos, une Live Photo, une vidéo HEVC | `ConvertMediaFormats = False`. Photos en HEIC (1,06 Mo/s). Live Photo en image fixe seule. Vidéo réencodée en H.264 1080p pendant l'envoi | Photos d'origine. Vidéos et Live Photos encore converties |
 | 25 | 2026-11-25 | Annonce élargie (HEVC niveau 186, Dolby Vision `dvh1`, macOS 15.1), plus l'option iOS "Toutes les données des photos" | Vidéo toujours en H.264, Live Photo toujours en image fixe, 0,97 à 1,09 Mo/s. Un deuxième envoi du même fichier écrase le premier | L'annonce élargie ne change rien |
+| 26 | 2026-11-25 | Clé sans point d'accès éphémère. Même photo deux fois, puis 20 photos d'un coup | "poc" visible. `IMG_4913.HEIC` puis `IMG_4913 (2).HEIC`. 39,08 Mo à 1,19 Mo/s, chaque fichier dans un dossier `NSIRD_AirDrop_xxxxxx/`. "poc" disparaît après les deux envois (journaux perdus à la relance) | Le point d'accès n'est plus nécessaire. Dossiers temporaires à retirer |
+| 27 | 2026-11-25 | Même scénario, journaux gardés par run | 1er lancement : OpenDrop s'arrête (`NonUniqueNameException`), le signal est arrivé pendant l'enregistrement du service. Puis deux envois, et "poc" disparaît quand l'iPhone rouvre sa feuille sans quitter AWDL. Puis 5 photos à 1,08 Mo/s, rangées directement dans `out/received/` | Il faut attendre l'enregistrement, et réannoncer aussi sur `changed channel sequence` |
+| 28 | 2026-11-25 | Réannonce après `Service announced`, sur `add peer` ou `changed channel sequence` | Quatre envois de la même photo sans relancer, "poc" réapparaît à chaque fois, 6 réannonces, 0,99 à 1,30 Mo/s | Réannonce fiable |
 
 ## Pistes écartées
 
@@ -227,7 +235,4 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 ## Questions ouvertes
 
 - **Comment recevoir les vidéos HEVC et les Live Photos d'origine ?** Essai prévu : changer le modèle annoncé avec `OPENDROP_ARGS="-m <modèle de Mac>"`, puis envoyer une vidéo et une Live Photo.
-- **Comment éviter d'écraser un fichier déjà reçu ?** Un deuxième envoi du même nom remplace le premier sans prévenir (essai 25). Piste : ajouter un suffixe au nom à l'extraction.
-- **Quel débit ?** Une seule mesure à 0,93 Mo/s. Essai prévu : plusieurs envois, dont un fichier de plus de 50 Mo, avec `summarize-run.sh`.
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).
-- **Le point d'accès éphémère est-il inutile avec la clé ?** L'essai 16 le laisse penser. Essai prévu : `receive` sur la clé sans cette étape.

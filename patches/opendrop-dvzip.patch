@@ -55,10 +55,11 @@
  
              def readinto(self, buf):
                  self._next_chunk()
-@@ -290,18 +305,82 @@
+@@ -290,18 +305,110 @@
                  self.total += length
                  return length
  
+-        def extract_stream(stream, flags=0):
 +        class DvzipReader(io.RawIOBase):
 +            """
 +            Decodes application/x-dvzip: a sequence of blocks, each made of a
@@ -102,20 +103,48 @@
 +                self.data = self.data[length:]
 +                return length
 +
-         def extract_stream(stream, flags=0):
++        def free_path(path):
++            """
++            Returns path, or "name (2).ext", "name (3).ext"... if it exists,
++            so that a file received twice does not replace the first one.
++            """
++            if not os.path.lexists(path):
++                return path
++            stem, ext = os.path.splitext(path)
++            n = 2
++            while os.path.lexists(f"{stem} ({n}){ext}"):
++                n += 1
++            return f"{stem} ({n}){ext}"
++
++        def entries_to_extract(archive):
++            for entry in archive:
++                # Skip the AppleDouble files (._name) that hold macOS metadata,
++                # and links, which AirDrop has no use for
++                if os.path.basename(entry.pathname).startswith("._"):
++                    continue
++                if entry.issym or entry.islnk:
++                    continue
++                # With several files, iOS puts each one in its own temporary
++                # folder (./NSIRD_AirDrop_xxxxxx/name): drop that folder
++                parts = os.path.normpath(entry.pathname).split(os.sep)
++                if parts and parts[0].startswith("NSIRD_AirDrop_"):
++                    if len(parts) == 1:
++                        continue
++                    entry.pathname = os.path.join(*parts[1:])
++                if entry.isfile:
++                    entry.pathname = free_path(entry.pathname)
++                yield entry
++
++        # Any nearby device can send files: refuse paths that would escape the
++        # current directory (absolute paths, "..", symbolic links)
++        def extract_stream(stream, flags=libarchive.extract.PREVENT_ESCAPE):
              """
              Extracts an archive from memory into the current directory.
              """
  
              with libarchive.read.stream_reader(stream) as archive:
 -                libarchive.extract.extract_entries(archive, flags)
-+                # Skip the AppleDouble files (._name) that hold macOS metadata
-+                entries = (
-+                    entry
-+                    for entry in archive
-+                    if not os.path.basename(entry.pathname).startswith("._")
-+                )
-+                libarchive.extract.extract_entries(entries, flags)
++                libarchive.extract.extract_entries(entries_to_extract(archive), flags)
  
 -        logger.info("Receiving file(s) ...")
 +        logger.info(f"Receiving file(s) ({content_type}) ...")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proof of concept: real AirDrop between this PC and an Apple device.
 #
-# Chain: short-lived hotspot on the AWDL channel (rtw89 quirk) -> plain monitor
+# Chain: short-lived hotspot on the AWDL channel (rtw89 only) -> plain monitor
 # mode -> OWL in the background (creates awdl0) -> OpenDrop on awdl0.
 #
 # Usage (from the repository root):
@@ -11,7 +11,8 @@
 #
 # The Apple device must have AirDrop set to "Everyone".
 # Stop with Ctrl+C: Wi-Fi is always restored and the hotspot profile removed.
-# Logs: out/ (git-ignored). Received files land in out/received/.
+# Logs: out/ (git-ignored), copied to out/runs/<date>-<mode>/ on exit.
+# Received files land in out/received/.
 # Set CAPTURE=1 to also record the traffic of awdl0 (out/awdl0.pcap) and the
 # raw Wi-Fi frames of the monitor interface (out/wlan.pcap).
 # Extra OWL options go in OWL_ARGS, e.g. OWL_ARGS="-f -vv" (no RSSI filter, trace),
@@ -72,10 +73,26 @@ OWL_BIN=${OWL_BIN:-$USER_HOME/.local/src/owl/build/daemon/owl}
 
 mkdir -p "$OUT_DIR/received"
 : >"$OPENDROP_LOG"
+# Files of this run are newer than this marker: they are archived on exit.
+RUN_MARKER="$OUT_DIR/.run-start"
+touch "$RUN_MARKER"
 # OpenDrop runs as the user and writes received files here.
 chown -R "$SUDO_USER": "$OUT_DIR"
 OWL_PID=
 CAPTURE_PIDS=()
+
+# Copy the logs and captures of this run to out/runs/<date>-<mode>/, so that the
+# next run does not overwrite them. out/latest points to the last run.
+archive_run() {
+    local run_dir file
+    run_dir="$OUT_DIR/runs/$(date +%Y%m%d-%H%M%S)-$MODE"
+    mkdir -p "$run_dir"
+    for file in "$OWL_LOG" "$OPENDROP_LOG" "$AWDL_PCAP" "$WLAN_PCAP"; do
+        [ "$file" -nt "$RUN_MARKER" ] && cp -p "$file" "$run_dir/"
+    done
+    ln -sfn "runs/$(basename "$run_dir")" "$OUT_DIR/latest"
+    echo "Run archived in $run_dir"
+}
 
 stop_process() {
     [ -n "$1" ] && kill "$1" 2>/dev/null && wait "$1" 2>/dev/null
@@ -93,6 +110,7 @@ restore() {
     iw dev "$IFACE" set type managed
     ip link set "$IFACE" up
     nmcli device set "$IFACE" managed yes
+    archive_run
     chown -R "$SUDO_USER": "$OUT_DIR"
     echo "Wi-Fi restored. Logs in $OUT_DIR"
 }
@@ -138,12 +156,18 @@ if [ "$ACTIVE_MONITOR" = 1 ]; then
     ip link set "$IFACE" up
     iw dev "$IFACE" set channel "$CHANNEL"
 else
-    echo "== Hotspot on channel $CHANNEL (so the firmware operates on it)"
-    nmcli device wifi hotspot ifname "$IFACE" con-name "$HOTSPOT_NAME" \
-        ssid "$HOTSPOT_NAME" band a channel "$CHANNEL" password "poc-hotspot" >/dev/null ||
-        die "hotspot failed"
-    sleep 5
-    nmcli connection down "$HOTSPOT_NAME" >/dev/null
+    # rtw89 only receives on the last channel its firmware operated on: a
+    # short-lived hotspot makes it operate on CHANNEL. Other drivers (mt76x2u)
+    # tune correctly in monitor mode and skip this step.
+    driver=$(basename "$(readlink -f "/sys/class/net/$IFACE/device/driver")")
+    if [[ "$driver" == rtw89* ]]; then
+        echo "== Hotspot on channel $CHANNEL (so the $driver firmware operates on it)"
+        nmcli device wifi hotspot ifname "$IFACE" con-name "$HOTSPOT_NAME" \
+            ssid "$HOTSPOT_NAME" band a channel "$CHANNEL" password "poc-hotspot" >/dev/null ||
+            die "hotspot failed"
+        sleep 5
+        nmcli connection down "$HOTSPOT_NAME" >/dev/null
+    fi
 
     echo "== Monitor mode on channel $CHANNEL"
     nmcli device set "$IFACE" managed no
@@ -196,17 +220,22 @@ if [ "$CAPTURE" = 1 ]; then
     echo "== Capturing to $AWDL_PCAP and $WLAN_PCAP"
 fi
 
-# In receive mode, ask OpenDrop to re-announce its service each time OWL finds
-# the Apple device again: after closing its share sheet, the device forgets us
-# and does not query. Only once OpenDrop has announced, i.e. handles SIGUSR1
-# (patches/opendrop-reannounce.patch): before that, the signal would kill it.
+# In receive mode, ask OpenDrop to re-announce its service when the Apple
+# device starts a new AirDrop search: it forgets us between two shares and
+# does not query. Signs of a new search in the OWL log: "add peer" (the device
+# comes back on AWDL) or "changed channel sequence" (it reopens its share sheet
+# without leaving AWDL). These come in bursts: at most one signal every 3 s.
+# Only once OpenDrop has registered its service (patches/opendrop-reannounce.patch).
 if [ "$MODE" = receive ]; then
     tail -n 0 -F --pid="$OWL_PID" "$OWL_LOG" 2>/dev/null |
-        grep --line-buffered 'add peer' |
+        grep --line-buffered -E 'add peer|changed channel sequence' |
         while read -r _; do
-            grep -q 'Announcing service' "$OPENDROP_LOG" || continue
+            now=$(date +%s)
+            [ $((now - ${last_signal:-0})) -ge 3 ] || continue
+            grep -q 'Service announced' "$OPENDROP_LOG" || continue
             pkill -USR1 -u "$SUDO_USER" -f -- "$OPENDROP receive" &&
-                echo "   [poc] peer back, re-announcing the service"
+                echo "   [poc] new AirDrop search, re-announcing the service"
+            last_signal=$now
         done &
 fi
 
