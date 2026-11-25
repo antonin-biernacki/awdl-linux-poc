@@ -3,7 +3,7 @@
 
 Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Aujourd'hui, l'iPhone voit le PC et s'y connecte, mais aucun fichier n'a encore été reçu.
 
-> **État** : En pause. La couche AWDL fonctionne et l'iPhone se connecte au PC, mais les réponses du PC n'arrivent pas à l'iPhone. Reprise à la réception d'une clé USB MediaTek MT7612U, pour vérifier si la carte Wi-Fi est en cause.
+> **État** : En pause. La couche AWDL fonctionne et l'iPhone se connecte au PC, mais les réponses du PC n'arrivent pas à l'iPhone. La clé USB MediaTek MT7612U est reçue et reconnue. Reprise avec les essais sur cette clé, pour vérifier si la carte Wi-Fi est en cause.
 
 ## Avertissement
 
@@ -36,7 +36,7 @@ Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, pe
 
 La couche AWDL fonctionne sur ma carte grâce à deux contournements : OWL se synchronise avec l'iPhone. En mode `receive`, l'iPhone voit le PC et ouvre des connexions TLS vers le port 8771. Presque aucune réponse du PC n'arrive à l'iPhone, donc aucun fichier n'a été reçu. Les modes `find` et `send` sont bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop.
 
-Je soupçonne la carte. Le projet est en pause jusqu'à la réception d'une clé USB MT7612U. Détail dans [ROADMAP.md](ROADMAP.md).
+Je soupçonne la carte. La clé USB MT7612U est reçue (le 2026-11-24) : le pilote `mt76x2u` la reconnaît sans installation et elle gère le mode moniteur actif. Les essais AWDL avec cette clé restent à faire. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -127,22 +127,22 @@ Les scripts de `diagnostics/` sont gardés pour référence et contiennent des c
 
 OWL demande à la carte bien plus qu'une connexion Wi-Fi classique :
 
-| Fonction                   | Rôle                                                   | RTL8852BE |
-|----------------------------|--------------------------------------------------------|-----------|
-| Mode moniteur              | Recevoir toutes les trames du canal                    | Oui |
-| Injection de trames        | Émettre des trames AWDL                                | Oui (testée sur le canal 157) |
-| Mode moniteur actif        | Acquitter (ACK) les trames reçues                      | Non |
-| Réception sur 6, 44 et 149 | Écouter les canaux AWDL                                | Seulement avec le contournement de [R2](RESULTATS.md#r2) |
+| Fonction                   | Rôle                                                   | RTL8852BE | MT7612U (clé USB) |
+|----------------------------|--------------------------------------------------------|-----------|-------------------|
+| Mode moniteur              | Recevoir toutes les trames du canal                    | Oui | Oui |
+| Injection de trames        | Émettre des trames AWDL                                | Oui (testée sur le canal 157) | Non testée |
+| Mode moniteur actif        | Acquitter (ACK) les trames reçues                      | Non | Oui (annoncé par `iw`) |
+| Réception sur 6, 44 et 149 | Écouter les canaux AWDL                                | Seulement avec le contournement de [R2](RESULTATS.md#r2) | Canaux disponibles, réception non testée |
 
 Sans contournement, il faut une carte avec mode moniteur actif. L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Côté clés USB, la MediaTek MT7612U (pilote `mt76`) est réputée compatible. Les commandes pour vérifier une autre carte sont dans [docs/GUIDE.md](docs/GUIDE.md#matériel).
 
 ## Questions ouvertes
 
-- La RTL8852BE est-elle la cause des pertes ? En mode moniteur simple, elle n'acquitte aucune trame et n'émet chaque trame qu'une fois. J'ai commandé une clé USB COMFAST CF-922AC, à puce MT7612U (pilote `mt76x2u`), pour refaire les essais.
+- La RTL8852BE est-elle la cause des pertes ? En mode moniteur simple, elle n'acquitte aucune trame et n'émet chaque trame qu'une fois. J'ai reçu une clé USB COMFAST CF-922AC, à puce MT7612U (pilote `mt76x2u`), pour refaire les essais.
 - Le firmware émet-il les trames injectées en retard, hors des courtes fenêtres où l'iPhone écoute le canal ?
 - Avec la clé, les contournements de R1 et R2 sont-ils encore nécessaires, et quel débit obtient-on ?
 
-Le protocole prévu à la réception de la clé est dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
+Le protocole d'essai avec la clé est dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
 
 ## Limites
 

@@ -17,3 +17,6 @@ venv/
 
 # Proof of concept outputs (logs, received files)
 out/
+
+# Vendor manuals (not redistributable)
+docs/CF-922ACManual.pdf

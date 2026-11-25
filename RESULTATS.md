@@ -138,8 +138,8 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 
 ## Questions ouvertes
 
-- **La carte est-elle la cause des pertes ?** Ma piste principale est le moment d'émission : si le firmware émet les trames injectées en retard, elles tombent hors des courtes fenêtres où l'iPhone écoute le canal. Une carte avec un autre pilote permet de trancher. J'ai commandé une clé USB COMFAST CF-922AC, à puce MediaTek MT7612U (pilote `mt76x2u` du noyau). Essai prévu à sa réception :
-  1. vérifier la puce et ses capacités (`lsusb`, `iw list | grep -i "active monitor"`) ;
+- **La carte est-elle la cause des pertes ?** Ma piste principale est le moment d'émission : si le firmware émet les trames injectées en retard, elles tombent hors des courtes fenêtres où l'iPhone écoute le canal. Une carte avec un autre pilote permet de trancher. J'ai reçu une clé USB COMFAST CF-922AC, à puce MediaTek MT7612U (pilote `mt76x2u` du noyau). Essai prévu :
+  1. vérifier la puce et ses capacités (`lsusb`, `iw list | grep -i "active monitor"`) : fait le 2026-11-24. `lsusb` affiche `0e8d:7612`, le pilote et le firmware se chargent sans installation, `iw` annonce le mode moniteur actif, et les canaux 6, 44 et 149 sont disponibles sans restriction ;
   2. refaire le test d'injection et la réception sur les canaux 6, 44 et 149, pour savoir si les contournements de R1 et R2 sont encore nécessaires ;
   3. relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 13, en regardant d'abord si l'iPhone acquitte les réponses du PC ;
   4. si ça passe, recevoir un premier fichier, puis mesurer le débit.

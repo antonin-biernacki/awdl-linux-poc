@@ -15,7 +15,7 @@
 | 3. AirDrop | Réception d'un fichier | Recevoir un fichier envoyé par l'iPhone : les réponses du PC se perdent | 🟡 |
 | 3. AirDrop | Découverte | Trouver l'iPhone avec `find` : bloqué, l'iPhone attend une annonce Bluetooth LE qu'OpenDrop ne sait pas faire | ⬜ |
 | 3. AirDrop | Envoi d'un fichier | Envoyer un fichier vers l'iPhone avec `send` : bloqué comme `find` | ⬜ |
-| 4. Clé MT7612U | Capacités | Vérifier la puce et le mode moniteur actif (`lsusb`, `iw list`) à la réception de la clé | ⬜ |
+| 4. Clé MT7612U | Capacités | Vérifier la puce et le mode moniteur actif (`lsusb`, `iw list`) : MT7612U reconnue par `mt76x2u`, mode moniteur actif présent, canaux 6, 44 et 149 disponibles | ✅ |
 | 4. Clé MT7612U | Contournements | Refaire l'injection et la réception sur 6, 44 et 149 pour savoir si les contournements restent nécessaires | ⬜ |
 | 4. Clé MT7612U | Réception | Relancer `receive` avec `IFACE=<interface de la clé>` et comparer avec l'essai 13 | ⬜ |
 | 4. Clé MT7612U | Débit | Recevoir un premier fichier et mesurer le débit | ⬜ |
