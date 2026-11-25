@@ -1,9 +1,9 @@
 <!-- clean-readme: type=recherche; langue=fr; v=2 -->
 # Preuve de concept AirDrop sur Linux
 
-Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC reçoit des photos envoyées par l'iPhone.
+Ce projet teste si un PC sous Linux (Fedora, carte Wi-Fi Realtek RTL8852BE) peut échanger des fichiers en AirDrop avec un iPhone, sans application côté Apple. Il s'appuie sur OWL, qui réimplémente le protocole Wi-Fi d'Apple (AWDL), et sur OpenDrop, qui réimplémente AirDrop par-dessus. Un script Bash enchaîne la mise en place et remet le Wi-Fi en état à la fin. Avec la carte intégrée, l'iPhone voit le PC mais aucun fichier ne passe. Avec une clé USB MediaTek MT7612U, le PC échange des fichiers avec l'iPhone dans les deux sens.
 
-> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone, y compris après une fermeture et une réouverture de la feuille de partage. L'envoi depuis le PC reste bloqué par l'annonce Bluetooth LE.
+> **État** : En cours. Avec la clé USB MT7612U, le PC reçoit des fichiers de l'iPhone et lui en envoie. Restent à faire : les vidéos HEVC et les Live Photos d'origine, et le type des fichiers envoyés, pour que les photos arrivent dans Photos.
 
 ## Avertissement
 
@@ -36,7 +36,9 @@ Une carte Wi-Fi intégrée courante, ici la RTL8852BE avec le pilote `rtw89`, pe
 
 Avec la carte intégrée, la couche AWDL fonctionne grâce à deux contournements, et l'iPhone ouvre des connexions TLS vers le PC. Les réponses du PC se perdent, donc aucun fichier ne passe.
 
-Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : ces deux formats. Les modes `find` et `send` sont toujours bloqués par l'absence d'annonce Bluetooth LE dans OpenDrop. Détail dans [ROADMAP.md](ROADMAP.md).
+Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. Le 2026-11-25, j'ai reçu des photos et un PDF de l'iPhone, après avoir décodé le format `x-dvzip` des iOS récents. Le PC se réannonce quand l'iPhone revient, donc plusieurs envois passent sans relancer le script. Le script ne touche qu'à la clé, et la carte intégrée reste connectée. Les photos arrivent dans leur format d'origine (HEIC), mais les vidéos HEVC sont converties en H.264 et les Live Photos arrivent sans leur vidéo. Le débit est d'environ 1 à 1,3 Mo/s, avec 20 photos (39 Mo) reçues d'un coup à 1,19 Mo/s. Reste à faire : ces deux formats.
+
+Dans l'autre sens, le script émet l'annonce Bluetooth LE d'AirDrop qui réveille l'iPhone, puis lit le service AirDrop que l'iPhone annonce dans ses trames AWDL. Le 2026-11-25, j'ai envoyé un fichier texte et une photo à l'iPhone (0,60 Mo/s). Ils s'ouvrent dans l'app Fichiers, pas dans Photos. Détail dans [ROADMAP.md](ROADMAP.md).
 
 ## Résultats principaux
 
@@ -44,18 +46,19 @@ Avec la clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent. 
 2. **R2** : en mode moniteur, la carte ne reçoit que sur le dernier canal utilisé par le firmware. Un point d'accès éphémère sur le canal voulu contourne le problème. [Détail](RESULTATS.md#r2)
 3. **R3** : avec ces deux contournements, OWL se synchronise avec l'iPhone, qui voit le PC et ouvre des connexions TLS. [Détail](RESULTATS.md#r3)
 4. **R4** : les réponses TLS du PC n'arrivent pas à l'iPhone. La taille des segments TCP n'est pas la cause. [Détail](RESULTATS.md#r4)
-5. **R5** : `find` et `send` ne trouvent pas l'iPhone, qui n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE. [Détail](RESULTATS.md#r5)
+5. **R5** : l'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS. Avec l'annonce Bluetooth et la lecture de ces trames, `find` trouve l'iPhone et `send` lui envoie des fichiers ([R11](RESULTATS.md#r11)). [Détail](RESULTATS.md#r5)
 6. **R6** : avec une clé USB MT7612U en mode moniteur simple, les réponses du PC arrivent et le PC reçoit des photos de l'iPhone (environ 1 à 1,3 Mo/s, sans point d'accès éphémère). Le mode moniteur actif de la clé empêche au contraire l'iPhone d'envoyer ([R7](RESULTATS.md#r7)). Les iOS récents envoient les fichiers au format `x-dvzip`, décodé dans [R8](RESULTATS.md#r8). Une réannonce mDNS fait revoir le PC à l'iPhone quand il revient ([R9](RESULTATS.md#r9)). Les photos arrivent en HEIC, mais les vidéos sont encore converties ([R10](RESULTATS.md#r10)). [Détail](RESULTATS.md#r6)
 
-Les 28 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
+Les 33 essais et les pistes écartées sont dans [RESULTATS.md](RESULTATS.md).
 
 ## Méthode
 
-AirDrop empile quatre briques : Bluetooth LE (annonce), AWDL (réseau Wi-Fi pair à pair sur les canaux 6, 44 et 149), mDNS / DNS-SD (service `_airdrop._tcp`) et HTTPS (échange d'identité, puis fichier). OWL prend en charge AWDL, OpenDrop le mDNS et le HTTPS. Aucun des deux ne fait l'annonce Bluetooth : il faut ouvrir la feuille de partage AirDrop sur l'iPhone pour qu'il active AWDL.
+AirDrop empile quatre briques : Bluetooth LE (annonce), AWDL (réseau Wi-Fi pair à pair sur les canaux 6, 44 et 149), mDNS / DNS-SD (service `_airdrop._tcp`) et HTTPS (échange d'identité, puis fichier). OWL prend en charge AWDL, OpenDrop le mDNS et le HTTPS. Aucun des deux ne fait l'annonce Bluetooth. Pour recevoir, il faut ouvrir la feuille de partage sur l'iPhone pour qu'il active AWDL. Pour envoyer, le script émet l'annonce Bluetooth avec `btmgmt`, et lit dans les trames AWDL le service AirDrop annoncé par l'iPhone.
 
 ```mermaid
 flowchart LR
     I[iPhone<br/>AirDrop 'Tout le monde'] <-- trames AWDL<br/>canal 149 --> W
+    B[hci0<br/>annonce Bluetooth LE] -. envoi seulement .-> I
     subgraph PC Linux
         W[carte ou clé USB<br/>mode moniteur] <--> O[OWL<br/>implémentation AWDL]
         O <--> A[awdl0<br/>interface IPv6]
@@ -72,22 +75,23 @@ J'observe chaque essai avec les journaux d'OWL et d'OpenDrop, et avec des captur
 - Linux avec une carte Wi-Fi qui accepte le mode moniteur et l'injection (voir [Matériel](#matériel))
 - `cmake`, `libpcap-devel`, `libev-devel`, `libnl3-devel`, `wireshark-cli` (`tshark`), `aircrack-ng`, `iw`, `nmcli`, `nft`, `patch`, Python 3
 - OWL compilé dans `~/.local/src/owl`, OpenDrop 0.13.0 avec les correctifs de `patches/`
+- Pour `find` et `send` : un contrôleur Bluetooth LE et `btmgmt` (paquet `bluez`)
 - Un iPhone avec AirDrop réglé sur "Tout le monde"
 - Testé sur : Fedora 44, noyau 7.2.15, Python 3.14
 
 Installation :
 
 ```bash
-sudo dnf install cmake libpcap-devel libev-devel libnl3-devel wireshark-cli aircrack-ng
+sudo dnf install cmake libpcap-devel libev-devel libnl3-devel wireshark-cli aircrack-ng bluez
 git clone --recursive https://github.com/seemoo-lab/owl.git ~/.local/src/owl
 cmake -S ~/.local/src/owl -B ~/.local/src/owl/build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 make -C ~/.local/src/owl/build owl
 bash scripts/setup-opendrop.sh
 ```
 
-Les raisons de ces réglages (CMake 4, `setuptools<81`, correctif d'OpenDrop) sont dans [docs/GUIDE.md](docs/GUIDE.md#installation).
+Les raisons de ces réglages (CMake 4, `setuptools<81`, correctifs d'OpenDrop) sont dans [docs/GUIDE.md](docs/GUIDE.md#installation).
 
-Lancement, depuis la racine du dépôt, avec la feuille de partage ouverte sur l'iPhone :
+Lancement, depuis la racine du dépôt. Pour `receive`, ouvrir la feuille de partage sur l'iPhone. Pour `find` et `send`, laisser l'iPhone déverrouillé, écran allumé, feuille de partage fermée :
 
 ```bash
 sudo bash scripts/airdrop-poc.sh find
@@ -102,9 +106,10 @@ Réception avec la clé USB (R6), le Wi-Fi habituel restant connecté. Le nom de
 
 ```bash
 sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh receive
+sudo IFACE=wlp4s0f4u1 bash scripts/airdrop-poc.sh send FICHIER
 ```
 
-Les fichiers reçus arrivent dans `out/received/`. Un fichier déjà présent n'est pas remplacé : le nouveau reçoit un suffixe ` (2)`. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
+En `find` et `send`, le Bluetooth est allumé pendant l'essai, puis remis dans son état de départ. Les fichiers reçus arrivent dans `out/received/`. Un fichier déjà présent n'est pas remplacé : le nouveau reçoit un suffixe ` (2)`. Les options (interface, canal, captures, arguments d'OWL) sont dans [docs/GUIDE.md](docs/GUIDE.md#configuration-et-options).
 
 ## Structure du dépôt
 
@@ -118,6 +123,9 @@ patches/
     opendrop-dvzip.patch          # OpenDrop : fichiers reçus au format x-dvzip
     opendrop-reannounce.patch     # OpenDrop : réannonce du service sur SIGUSR1
     opendrop-media-capabilities.patch  # OpenDrop : formats annoncés comme un Mac (photos en HEIC)
+    opendrop-awdl-peers.patch     # OpenDrop : récepteurs trouvés dans les trames AWDL (--peers-file)
+    opendrop-compat.patch         # OpenDrop : Python 3.12 et libarchive-c 5
+    opendrop-send-ios.patch       # OpenDrop : envoi en x-dvzip, avec tailles et identifiant de transfert
 docs/
     GUIDE.md                      # installation détaillée, options, vérifier une carte
 out/                              # créé à l'exécution, ignoré par git : journaux, captures, fichiers reçus
@@ -147,12 +155,14 @@ OWL demande à la carte bien plus qu'une connexion Wi-Fi classique :
 | Mode moniteur actif        | Acquitter (ACK) les trames reçues                      | Non | Oui, mais l'iPhone n'envoie alors rien ([R7](RESULTATS.md#r7)) |
 | Réception sur 6, 44 et 149 | Écouter les canaux AWDL                                | Seulement avec le contournement de [R2](RESULTATS.md#r2) | Oui, sans contournement |
 
-L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la MT7612U, le mode moniteur simple suffit pour recevoir un fichier. Les commandes pour vérifier une autre carte sont dans [docs/GUIDE.md](docs/GUIDE.md#matériel).
+L'équipe d'OWL a développé avec une Atheros AR9280 (pilote `ath9k`). Avec la MT7612U, le mode moniteur simple suffit pour échanger des fichiers. Les commandes pour vérifier une autre carte sont dans [docs/GUIDE.md](docs/GUIDE.md#matériel).
 
 ## Questions ouvertes
 
 - Pourquoi l'iPhone convertit-il encore les vidéos HEVC en H.264 et envoie-t-il les Live Photos sans leur vidéo ?
 - Pourquoi l'iPhone n'envoie-t-il rien quand la clé est en mode moniteur actif ?
+- Les photos envoyées iraient-elles dans Photos avec le bon type de fichier (`public.heic`, `public.jpeg`) ?
+- Pourquoi l'envoi vers l'iPhone (0,60 Mo/s) est-il deux fois plus lent que la réception ?
 
 Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
 
@@ -163,6 +173,7 @@ Les essais prévus sont dans [RESULTATS.md](RESULTATS.md#questions-ouvertes).
 - Sans certificat signé par Apple, l'iPhone ne voit le PC qu'en mode "Tout le monde", qui se désactive seul au bout de 10 minutes
 - OWL (dernier commit de code en janvier 2022) et OpenDrop (avril 2021) ne sont plus maintenus : une mise à jour d'iOS peut tout casser
 - Le mode moniteur et OWL demandent les droits root
+- `find` et `send` allument le Bluetooth du PC pendant l'essai
 - En `receive`, le PC accepte sans confirmation tout envoi d'un appareil à portée. L'extraction refuse les chemins qui sortent de `out/received/` et ignore les liens symboliques, mais rien ne filtre l'expéditeur
 
 ## Crédits

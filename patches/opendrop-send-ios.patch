@@ -1,0 +1,80 @@
+--- a/opendrop/client.py
++++ b/opendrop/client.py
+@@ -24,6 +24,8 @@
+ import platform
+ import plistlib
+ import socket
++import uuid
++import zlib
+ from http.client import HTTPSConnection
+ 
+ import fleep
+@@ -92,6 +94,7 @@
+         self.receiver_host = receiver[0]
+         self.receiver_port = receiver[1]
+         self.http_conn = None
++        self.transfer_id = str(uuid.uuid4()).upper()
+ 
+     def send_POST(self, url, body, headers=None):
+         logger.debug(f"Send {url} request")
+@@ -151,6 +154,10 @@
+             "SenderModelName": self.config.computer_model,
+             "SenderID": self.config.service_id,
+             "ConvertMediaFormats": False,
++            # Sent by iOS senders: the receiver ties /Ask and /Upload together
++            # with TransferID, and uses the file sizes for its progress bar
++            "TransferID": {"id": self.transfer_id},
++            "TransferType": {"files": {}},
+         }
+         if self.config.record_data:
+             ask_body["SenderRecordData"] = self.config.record_data
+@@ -161,9 +168,11 @@
+                 file_entry = {
+                     "FileName": file_name,
+                     "FileType": AirDropUtil.get_uti_type(flp),
++                    "FileSize": os.path.getsize(file),
+                     "FileBomPath": os.path.join(".", file_name),
+-                    "FileIsDirectory": os.path.isdir(file_name),
++                    "FileIsDirectory": os.path.isdir(file),
+                     "ConvertMediaFormats": 0,
++                    "ShouldConvertMediaFormats": False,
+                 }
+                 yield file_entry
+ 
+@@ -197,22 +206,29 @@
+         if is_url:
+             return
+ 
++        # Recent iOS versions send and expect application/x-dvzip: the cpio
++        # archive cut into 128 KiB blocks, each one compressed with zlib and
++        # preceded by its length (4 bytes, big-endian)
+         headers = {
+-            "Content-Type": "application/x-cpio",
++            "Content-Type": "application/x-dvzip",
++            # Without these, the receiver does not know the transfer is over
++            "TotalBytes": str(os.path.getsize(file_path)),
++            "TransferID": self.transfer_id,
+         }
+ 
+         # Create archive in memory ...
+-        stream = io.BytesIO()
+         # libarchive-c 5 changed the ArchiveEntry constructor that
+         # AbsArchiveWrite relies on, and can now set the stored path itself
+-        with libarchive.custom_writer(
+-            stream.write,
+-            "cpio",
+-            filter_name="gzip",
+-        ) as archive:
++        cpio = io.BytesIO()
++        with libarchive.custom_writer(cpio.write, "cpio") as archive:
+             for f in [file_path]:
+                 ff = os.path.basename(f)
+                 archive.add_files(f, pathname=os.path.join(".", ff))
++        cpio_bytes = cpio.getvalue()
++        stream = io.BytesIO()
++        for start in range(0, len(cpio_bytes), 131072):
++            block = zlib.compress(cpio_bytes[start : start + 131072])
++            stream.write(len(block).to_bytes(4, "big") + block)
+         stream.seek(0)
+ 
+         # ... then send in chunked mode

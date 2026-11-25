@@ -13,8 +13,8 @@
 | 3. AirDrop | Script | Écrire `scripts/airdrop-poc.sh` avec les modes `find`, `receive` et `send` | ✅ |
 | 3. AirDrop | Connexion de l'iPhone | Obtenir des connexions TLS de l'iPhone vers le port 8771 en `receive` | ✅ |
 | 3. AirDrop | Réception d'un fichier | Recevoir un fichier envoyé par l'iPhone : impossible avec la RTL8852BE, fait avec la clé MT7612U | ✅ |
-| 3. AirDrop | Découverte | Trouver l'iPhone avec `find` : bloqué, l'iPhone attend une annonce Bluetooth LE qu'OpenDrop ne sait pas faire | ⬜ |
-| 3. AirDrop | Envoi d'un fichier | Envoyer un fichier vers l'iPhone avec `send` : bloqué comme `find` | ⬜ |
+| 3. AirDrop | Découverte | Trouver l'iPhone avec `find` : annonce Bluetooth LE, puis lecture du service dans les trames AWDL | ✅ |
+| 3. AirDrop | Envoi d'un fichier | Envoyer un fichier vers l'iPhone avec `send` : texte et photo reçus, ouverts dans Fichiers | ✅ |
 | 4. Clé MT7612U | Capacités | Vérifier la puce et le mode moniteur actif (`lsusb`, `iw list`) : MT7612U reconnue par `mt76x2u`, mode moniteur actif présent, canaux 6, 44 et 149 disponibles | ✅ |
 | 4. Clé MT7612U | Contournements | Refaire l'injection et la réception sur 6, 44 et 149 : injection et réception sans contournement en mode simple, mode actif seulement avec une interface d'aide | ✅ |
 | 4. Clé MT7612U | Réception | Relancer `receive` avec `IFACE=<interface de la clé>` : les réponses du PC passent, photos reçues après décodage du format `x-dvzip` | ✅ |
@@ -26,3 +26,4 @@
 | 5. Confort | Extraction sûre | Refuser les chemins qui sortent du dossier de réception, ignorer les liens symboliques | ✅ |
 | 5. Confort | Point d'accès éphémère | Le retirer du chemin de la clé : lancé seulement avec un pilote `rtw89` | ✅ |
 | 5. Confort | Mode moniteur actif | Comprendre pourquoi l'iPhone n'envoie rien dans ce mode | ⬜ |
+| 5. Confort | Type de fichier à l'envoi | Déclarer le bon type (`public.heic`, `public.jpeg`...) pour que les photos envoyées arrivent dans Photos | ⬜ |

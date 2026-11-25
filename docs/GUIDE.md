@@ -12,6 +12,9 @@ Les commandes sont dans [Reproduire](../README.md#reproduire). Points à connaî
 - les iOS récents envoient les fichiers en `application/x-dvzip`, qu'OpenDrop 0.13.0 refuse. `patches/opendrop-dvzip.patch` décode ce format (voir [R8](../RESULTATS.md#r8)) et garde la copie brute dans `out/received/` si l'extraction échoue. Il ignore les fichiers AppleDouble `._nom` (métadonnées macOS) et les liens symboliques, refuse les chemins qui sortent du dossier, retire les dossiers temporaires `NSIRD_AirDrop_*` et ajoute ` (2)` au nom d'un fichier déjà présent ;
 - `patches/opendrop-reannounce.patch` fait réannoncer le service par OpenDrop sur `SIGUSR1`. `scripts/airdrop-poc.sh` l'envoie quand l'iPhone commence une nouvelle recherche, après la ligne `Service announced` (voir [R9](../RESULTATS.md#r9)) ;
 - `patches/opendrop-media-capabilities.patch` annonce à l'iPhone les formats d'un Mac, pour recevoir les photos en HEIC (voir [R10](../RESULTATS.md#r10)) ;
+- `patches/opendrop-awdl-peers.patch` ajoute l'option `--peers-file` : OpenDrop y lit les récepteurs trouvés dans les trames AWDL (voir [R11](../RESULTATS.md#r11)) ;
+- `patches/opendrop-compat.patch` adapte OpenDrop à Python 3.12 et plus et à libarchive-c 5 ;
+- `patches/opendrop-send-ios.patch` envoie les fichiers comme iOS : `x-dvzip`, tailles et identifiant de transfert ;
 - `scripts/setup-opendrop.sh` peut être relancé sans risque : il réinstalle OpenDrop d'origine, puis applique tous les correctifs dans l'ordre. Tester chaque correctif à part ne suffit pas, car un correctif peut modifier le contexte d'un autre ;
 - le pare-feu de Fedora Workstation ouvre les ports 1025 à 65535, donc le port 8771 d'OpenDrop et le mDNS passent sans réglage ;
 - les clés et le certificat d'OpenDrop sont générés au premier lancement dans `~/.opendrop/`.
@@ -31,6 +34,8 @@ Options de `scripts/airdrop-poc.sh`, à passer en variables d'environnement :
 | `OPENDROP_ARGS` | (vide)                              | Options en plus pour OpenDrop, par exemple `-d` (débogage) |
 | `TCP_MSS`       | `0`                                 | Taille maximale des segments TCP envoyés à l'iPhone (`0` : pas de limite), voir les [pistes écartées](../RESULTATS.md#pistes-écartées) |
 | `OWL_BIN`       | `~/.local/src/owl/build/daemon/owl` | Binaire OWL |
+| `BLE`           | `1`                                 | `find` et `send` : émet l'annonce Bluetooth LE d'AirDrop (`0` : non). Le Bluetooth est remis dans son état de départ à la sortie |
+| `BT_INDEX`      | `0`                                 | Contrôleur Bluetooth (`hci0`) |
 | `ACTIVE_MONITOR`| `0`                                 | `1` : mode moniteur actif, sans point d'accès éphémère, avec l'interface d'aide `pocmon0` (voir [R7](../RESULTATS.md#r7)). Avec la MT7612U, l'iPhone n'envoie alors rien |
 
 Exemple :
@@ -48,6 +53,7 @@ out/
     awdl0.pcap     # trafic de awdl0, avec CAPTURE=1
     wlan.pcap      # trames Wi-Fi brutes, avec CAPTURE=1
     received/      # fichiers reçus
+    awdl-peers.txt # find et send : récepteurs lus dans les trames AWDL (MAC, port, instance, flags)
     runs/          # copie des journaux et captures de chaque run (<date>-<mode>/)
     latest         # lien vers le dernier run
 ```

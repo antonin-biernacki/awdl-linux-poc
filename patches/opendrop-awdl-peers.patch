@@ -1,0 +1,89 @@
+--- a/opendrop/cli.py
++++ b/opendrop/cli.py
+@@ -36,6 +36,26 @@
+     AirDropCli(sys.argv[1:])
+ 
+ 
++class AwdlPeerInfo:
++    """
++    Stands for a zeroconf ServiceInfo, for a receiver found in AWDL frames.
++    """
++
++    def __init__(self, mac, port, instance, flags):
++        octets = [int(x, 16) for x in mac.split(":")]
++        octets[0] ^= 0x02  # EUI-64: flip the universal/local bit
++        eui64 = octets[:3] + [0xFF, 0xFE] + octets[3:]
++        groups = [f"{eui64[i] << 8 | eui64[i + 1]:x}" for i in range(0, 8, 2)]
++        self.address = "fe80::" + ":".join(groups)
++        self.port = int(port)
++        self.name = f"{instance}._airdrop._tcp.local."
++        self.server = f"{instance}.local."
++        self.properties = {b"flags": flags.encode()}
++
++    def parsed_addresses(self):
++        return [self.address]
++
++
+ class AirDropCli:
+     def __init__(self, args):
+         parser = argparse.ArgumentParser()
+@@ -67,6 +87,11 @@
+         parser.add_argument(
+             "-i", "--interface", help="Which AWDL interface to use", default="awdl0"
+         )
++        parser.add_argument(
++            "--peers-file",
++            help="With find: file where another program writes AirDrop receivers "
++            "announced in AWDL frames, one per line: MAC PORT INSTANCE FLAGS",
++        )
+         args = parser.parse_args(args)
+ 
+         if args.debug:
+@@ -93,6 +118,7 @@
+         self.sending_started = False
+         self.discover = []
+         self.lock = threading.Lock()
++        self.peers_file = args.peers_file
+ 
+         try:
+             if args.action == "receive":
+@@ -120,6 +146,8 @@
+         logger.info("Looking for receivers. Press Ctrl+C to stop ...")
+         self.browser = AirDropBrowser(self.config)
+         self.browser.start(callback_add=self._found_receiver)
++        if self.peers_file:
++            threading.Thread(target=self._watch_peers_file, daemon=True).start()
+         try:
+             threading.Event().wait()
+         except KeyboardInterrupt:
+@@ -130,6 +158,30 @@
+             with open(self.config.discovery_report, "w") as f:
+                 json.dump(self.discover, f)
+ 
++    def _watch_peers_file(self):
++        """
++        Apple receivers announce their AirDrop service in AWDL frames (Service
++        Response TLVs), not with mDNS on awdl0, and OWL does not forward them.
++        Read the receivers another program extracted from these frames and
++        handle each new one like a receiver found with mDNS.
++        """
++        seen = set()
++        while True:
++            try:
++                with open(self.peers_file) as f:
++                    lines = f.read().splitlines()
++            except FileNotFoundError:
++                lines = []
++            for line in lines:
++                fields = line.split()
++                if len(fields) != 4 or line in seen:
++                    continue
++                seen.add(line)
++                mac, port, instance, flags = fields
++                logger.debug(f"AirDrop receiver from AWDL frames: {line}")
++                self._found_receiver(AwdlPeerInfo(mac, port, instance, flags))
++            time.sleep(1)
++
+     def _found_receiver(self, info):
+         thread = threading.Thread(target=self._send_discover, args=(info,))
+         thread.start()

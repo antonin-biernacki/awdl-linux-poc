@@ -1,0 +1,48 @@
+--- a/opendrop/client.py
++++ b/opendrop/client.py
+@@ -30,7 +30,7 @@
+ import libarchive
+ from zeroconf import IPVersion, ServiceBrowser, Zeroconf
+ 
+-from .util import AbsArchiveWrite, AirDropUtil
++from .util import AirDropUtil
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -203,15 +203,16 @@
+ 
+         # Create archive in memory ...
+         stream = io.BytesIO()
++        # libarchive-c 5 changed the ArchiveEntry constructor that
++        # AbsArchiveWrite relies on, and can now set the stored path itself
+         with libarchive.custom_writer(
+             stream.write,
+             "cpio",
+             filter_name="gzip",
+-            archive_write_class=AbsArchiveWrite,
+         ) as archive:
+             for f in [file_path]:
+                 ff = os.path.basename(f)
+-                archive.add_abs_file(f, os.path.join(".", ff))
++                archive.add_files(f, pathname=os.path.join(".", ff))
+         stream.seek(0)
+ 
+         # ... then send in chunked mode
+@@ -263,15 +264,14 @@
+         if timeout is None:
+             timeout = socket.getdefaulttimeout()
+ 
++        # Python 3.12 removed key_file, cert_file and check_hostname from
++        # HTTPSConnection: the certificate is already in the SSL context
+         super(HTTPSConnectionAWDL, self).__init__(
+             host=host,
+             port=port,
+-            key_file=key_file,
+-            cert_file=cert_file,
+             timeout=timeout,
+             source_address=source_address,
+             context=context,
+-            check_hostname=check_hostname,
+         )
+ 
+         self.interface_name = interface_name

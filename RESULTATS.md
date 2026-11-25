@@ -15,6 +15,7 @@
   - [R8](#r8)
   - [R9](#r9)
   - [R10](#r10)
+  - [R11](#r11)
 - [Essais](#essais)
 - [Pistes écartées](#pistes-écartées)
 - [Questions ouvertes](#questions-ouvertes)
@@ -35,7 +36,7 @@ Le script `scripts/airdrop-poc.sh` :
 2. passe la carte en mode moniteur simple sur ce canal (contournement de [R1](#r1)) ;
 3. démarre OWL en arrière-plan et attend que `awdl0` ait une adresse IPv6 ;
 4. lance OpenDrop sur `awdl0`, avec les droits de l'utilisateur ;
-5. en `receive`, demande à OpenDrop de réannoncer son service quand l'iPhone commence une nouvelle recherche ([R9](#r9)) ;
+5. en `receive`, demande à OpenDrop de réannoncer son service quand l'iPhone commence une nouvelle recherche ([R9](#r9)). En `find` et `send`, lit dans les trames AWDL les récepteurs annoncés et émet l'annonce Bluetooth LE d'AirDrop ([R11](#r11)) ;
 6. à la sortie (fin normale, erreur ou Ctrl+C), arrête OWL, supprime le point d'accès, remet la carte en Wi-Fi normal et copie les journaux et captures du run dans `out/runs/<date>-<mode>/` (`out/latest` pointe vers le dernier).
 
 Observation :
@@ -108,11 +109,13 @@ iw dev wlp2s0 set channel 149
 
 ### R5
 
-**`find` et `send` ne trouvent pas l'iPhone.**
+**L'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, et il annonce ce serveur dans ses trames AWDL, pas en mDNS.**
 
 - Preuves : avec la feuille de partage ouverte sur l'iPhone, `find` ne trouve aucun appareil (essai 9). L'iPhone n'ouvre son serveur AirDrop qu'après une annonce Bluetooth LE, qu'OpenDrop ne sait pas faire. C'est une limite connue d'OpenDrop.
-- Date : inconnue
-- Produit par : `sudo bash scripts/airdrop-poc.sh find`
+- Avec l'annonce Bluetooth émise par le script, l'iPhone allume AWDL et OWL se synchronise. L'iPhone ne répond pas aux requêtes mDNS sur `awdl0`, mais il annonce `_airdrop._tcp` dans ses trames AWDL : TLV "Service Response" avec PTR, SRV (port 8770) et TXT (`flags`). OWL ignore ces TLV (essai 29).
+- Contournement : le script lit ces TLV avec `tshark` et les passe à OpenDrop, qui trouve alors l'iPhone ([R11](#r11)).
+- Date : inconnue (essai 9), 2026-11-25 (essai 29)
+- Produit par : `sudo IFACE=wlp4s0f4u1 CAPTURE=1 bash scripts/airdrop-poc.sh find`
 
 ### R6
 
@@ -183,9 +186,23 @@ bit de poids fort de la longueur = 0 : bloc zlib
 - Date : 2026-11-25
 - Produit par : `patches/opendrop-media-capabilities.patch`, puis `sudo IFACE=wlp4s0f4u1 CAPTURE=1 OPENDROP_ARGS="-d" bash scripts/airdrop-poc.sh receive` (`-d` enregistre les requêtes de l'iPhone dans `~/.opendrop/debug/`)
 
+### R11
+
+**Avec une annonce Bluetooth LE, la lecture des trames AWDL et un envoi au format d'iOS, le PC envoie des fichiers à l'iPhone.**
+
+- Preuves : `find` affiche l'iPhone avec son nom (essai 31). `send` envoie un fichier texte de 89 octets et une photo HEIC de 2,94 Mo. OpenDrop affiche `Uploading has been successful`, et l'iPhone ouvre les fichiers dans l'app Fichiers (essai 33).
+- Débit : 2,94 Mo en 4,9 s après l'acceptation, soit 0,60 Mo/s.
+- Annonce Bluetooth : données constructeur Apple (`0x004c`), type AirDrop `0x05`, 18 octets dont quatre empreintes tronquées de l'identité de l'expéditeur. Avec des empreintes nulles, un iPhone en "Tout le monde" répond. Le script l'émet avec `btmgmt add-adv`, puis remet le Bluetooth dans son état de départ.
+- Découverte : le script écrit chaque récepteur annoncé dans les trames AWDL dans `out/awdl-peers.txt` (adresse MAC, port, instance, flags). `patches/opendrop-awdl-peers.patch` ajoute à OpenDrop l'option `--peers-file`, qui lit ce fichier et déduit l'adresse IPv6 lien-local de l'adresse MAC (EUI-64).
+- Compatibilité : OpenDrop 0.13.0 ne tourne plus avec Python 3.12 et plus (`HTTPSConnection` sans `key_file` ni `cert_file`) ni avec libarchive-c 5 (constructeur de `ArchiveEntry` changé). `patches/opendrop-compat.patch` corrige les deux (essais 30 et 31).
+- Envoi : avec l'envoi d'origine d'OpenDrop, l'iPhone accepte puis garde une barre de progression figée, sans répondre à `/Upload` (essai 32). `patches/opendrop-send-ios.patch` envoie comme iOS : archive en `x-dvzip`, `FileSize` pour chaque fichier et `TransferID` dans `/Ask`, en-têtes `TotalBytes` et `TransferID` dans `/Upload` (essai 33).
+- Les fichiers arrivent dans Fichiers, pas dans Photos : OpenDrop devine le type avec `fleep`, qui ne reconnaît ni le HEIC ni le texte, et déclare `public.content`.
+- Date : 2026-11-25
+- Produit par : `sudo IFACE=wlp4s0f4u1 bash scripts/airdrop-poc.sh send FICHIER`
+
 ## Essais
 
-Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 28 utilisent la clé USB MT7612U.
+Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été faits au plus tard le 2026-11-13, date du commit qui les décrit. Les essais 15 à 33 utilisent la clé USB MT7612U.
 
 | # | Date | Essai | Résultat | Conclusion |
 |---|---|---|---|---|
@@ -217,6 +234,11 @@ Les dates exactes des essais 1 à 14 n'ont pas été notées. Ils ont tous été
 | 26 | 2026-11-25 | Clé sans point d'accès éphémère. Même photo deux fois, puis 20 photos d'un coup | "poc" visible. `IMG_4913.HEIC` puis `IMG_4913 (2).HEIC`. 39,08 Mo à 1,19 Mo/s, chaque fichier dans un dossier `NSIRD_AirDrop_xxxxxx/`. "poc" disparaît après les deux envois (journaux perdus à la relance) | Le point d'accès n'est plus nécessaire. Dossiers temporaires à retirer |
 | 27 | 2026-11-25 | Même scénario, journaux gardés par run | 1er lancement : OpenDrop s'arrête (`NonUniqueNameException`), le signal est arrivé pendant l'enregistrement du service. Puis deux envois, et "poc" disparaît quand l'iPhone rouvre sa feuille sans quitter AWDL. Puis 5 photos à 1,08 Mo/s, rangées directement dans `out/received/` | Il faut attendre l'enregistrement, et réannoncer aussi sur `changed channel sequence` |
 | 28 | 2026-11-25 | Réannonce après `Service announced`, sur `add peer` ou `changed channel sequence` | Quatre envois de la même photo sans relancer, "poc" réapparaît à chaque fois, 6 réannonces, 0,99 à 1,30 Mo/s | Réannonce fiable |
+| 29 | 2026-11-25 | `find` avec l'annonce Bluetooth LE d'AirDrop, iPhone écran allumé, feuille fermée | L'iPhone allume AWDL (`add peer`), mais ne répond pas aux requêtes mDNS. Il annonce `_airdrop._tcp` dans ses trames AWDL (SRV port 8770, TXT `flags`) | L'annonce Bluetooth réveille l'iPhone. Il faut lire les trames AWDL |
+| 30 | 2026-11-25 | Lecture des TLV par `tshark`, `--peers-file` dans OpenDrop | Récepteur trouvé, puis `TypeError` dans `HTTPSConnection` (`key_file`) | OpenDrop incompatible avec Python 3.12 et plus |
+| 31 | 2026-11-25 | `opendrop-compat.patch`, `find` puis `send` d'un fichier texte | `find` affiche l'iPhone et son nom. `send` : l'iPhone accepte, puis `TypeError` dans `ArchiveEntry` | OpenDrop incompatible avec libarchive-c 5 |
+| 32 | 2026-11-25 | Envoi corrigé, en `x-cpio` compressé puis en `x-dvzip` | L'iPhone accuse réception en TCP mais ne répond pas à `/Upload`. Barre de progression figée | Il manque des informations sur le transfert |
+| 33 | 2026-11-25 | `opendrop-send-ios.patch` : tailles et identifiant de transfert. Texte, puis photo HEIC | `Uploading has been successful`. Texte ouvert dans Fichiers. Photo de 2,94 Mo en 4,9 s (0,60 Mo/s), ouverte dans Fichiers | Premier envoi du PC vers l'iPhone |
 
 ## Pistes écartées
 
@@ -235,4 +257,6 @@ nft add rule inet airdrop_poc prerouting iifname awdl0 'tcp flags & (syn | ack) 
 ## Questions ouvertes
 
 - **Comment recevoir les vidéos HEVC et les Live Photos d'origine ?** Essai prévu : changer le modèle annoncé avec `OPENDROP_ARGS="-m <modèle de Mac>"`, puis envoyer une vidéo et une Live Photo.
+- **Les photos envoyées iraient-elles dans Photos ?** Essai prévu : déclarer le type d'après l'extension (`public.heic`, `public.jpeg`, `public.plain-text`) au lieu de `fleep`, puis envoyer une photo.
+- **Pourquoi l'envoi (0,60 Mo/s) est-il plus lent que la réception ?** Piste : comparer les captures des deux sens (taille des segments, retransmissions, moment d'émission).
 - **Pourquoi l'iPhone n'envoie-t-il rien en mode moniteur actif ?** Piste : comparer les trames émises par OWL dans les deux modes (débit, drapeaux radiotap, moment d'émission).

@@ -20,6 +20,10 @@
 # Summarize a run with: bash scripts/diagnostics/summarize-run.sh
 # Set TCP_MSS (bytes) to cap the TCP segments sent to the Apple device
 # (default 0: no cap). Tested with 500: it did not help with this card.
+# find and send first broadcast an AirDrop Bluetooth LE advertisement: Apple
+# devices only turn on AWDL and their AirDrop server after receiving one.
+# Bluetooth is turned on for the run and put back as it was on exit.
+# Set BLE=0 to skip it, BT_INDEX to pick another controller (default 0: hci0).
 # Set ACTIVE_MONITOR=1 for an adapter with active monitor mode (e.g. MT7612U):
 # no hotspot trick, IFACE in active monitor mode (it ACKs incoming frames).
 # mac80211 only tunes an active monitor interface through its virtual monitor,
@@ -36,6 +40,17 @@ OPENDROP_ARGS=${OPENDROP_ARGS:-}
 TCP_MSS=${TCP_MSS:-0}
 ACTIVE_MONITOR=${ACTIVE_MONITOR:-0}
 HELPER_IFACE=pocmon0
+BLE=${BLE:-1}
+BT_INDEX=${BT_INDEX:-0}
+BT_ADV_INSTANCE=1
+# AirDrop advertisement: Apple manufacturer data (company 0x004c), type 0x05,
+# 18 bytes: 8 zero bytes, version 1, four 2-byte truncated SHA-256 hashes of the
+# sender's Apple ID, phone and e-mails (zero here: no identity), one zero byte.
+# Receivers set to "Everyone" answer it.
+AIRDROP_ADV=17ff4c000512000000000000000001000000000000000000
+BT_STARTED=0
+BT_WAS_BLOCKED=0
+BT_WAS_POWERED=0
 NFT_TABLE=airdrop_poc
 HOTSPOT_NAME=poc-hotspot
 
@@ -46,6 +61,7 @@ OWL_LOG="$OUT_DIR/owl.log"
 OPENDROP_LOG="$OUT_DIR/opendrop.log"
 AWDL_PCAP="$OUT_DIR/awdl0.pcap"
 WLAN_PCAP="$OUT_DIR/wlan.pcap"
+PEERS_FILE="$OUT_DIR/awdl-peers.txt"
 
 usage() {
     sed -n '7,10p' "${BASH_SOURCE[0]}" | sed 's/^# //'
@@ -98,7 +114,31 @@ stop_process() {
     [ -n "$1" ] && kill "$1" 2>/dev/null && wait "$1" 2>/dev/null
 }
 
+# Turn Bluetooth on and broadcast the AirDrop advertisement.
+ble_start() {
+    command -v btmgmt >/dev/null || die "btmgmt not found (package bluez)"
+    rfkill list bluetooth | grep -q 'Soft blocked: yes' && BT_WAS_BLOCKED=1
+    bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' && BT_WAS_POWERED=1
+    BT_STARTED=1
+    rfkill unblock bluetooth
+    sleep 1
+    timeout 10 btmgmt --index "$BT_INDEX" power on >/dev/null || die "cannot power on hci$BT_INDEX"
+    timeout 10 btmgmt --index "$BT_INDEX" add-adv -g -d "$AIRDROP_ADV" "$BT_ADV_INSTANCE" >/dev/null ||
+        die "cannot add the AirDrop advertisement on hci$BT_INDEX"
+    echo "== Broadcasting the AirDrop Bluetooth LE advertisement (hci$BT_INDEX)"
+}
+
+# Remove the advertisement and put Bluetooth back as it was.
+ble_stop() {
+    [ "$BT_STARTED" = 1 ] || return 0
+    timeout 10 btmgmt --index "$BT_INDEX" rm-adv "$BT_ADV_INSTANCE" >/dev/null 2>&1
+    [ "$BT_WAS_POWERED" = 1 ] || timeout 10 btmgmt --index "$BT_INDEX" power off >/dev/null 2>&1
+    [ "$BT_WAS_BLOCKED" = 1 ] && rfkill block bluetooth
+    echo "Bluetooth restored."
+}
+
 restore() {
+    ble_stop
     nft delete table inet "$NFT_TABLE" 2>/dev/null
     for pid in "${CAPTURE_PIDS[@]}"; do
         stop_process "$pid"
@@ -239,10 +279,42 @@ if [ "$MODE" = receive ]; then
         done &
 fi
 
+# Apple receivers announce their AirDrop service in AWDL frames (Service
+# Response TLVs: SRV with the port, TXT with the flags), not with mDNS on
+# awdl0, and OWL does not forward them. Extract them from the frames and hand
+# them to OpenDrop (--peers-file, patches/opendrop-awdl-peers.patch).
+watch_awdl_peers() {
+    : >"$PEERS_FILE"
+    chown "$SUDO_USER": "$PEERS_FILE"
+    tshark -i "$IFACE" -l -n -Y 'awdl.dns.port' -V 2>/dev/null > >(awk '
+/^Frame [0-9]+:/ { mac = ""; port = ""; inst = ""; flags = "" }
+/^ *Transmitter address: / { mac = $3 }
+/\._airdrop\._tcp\.local: type SRV,/ {
+    inst = $1; sub(/\._airdrop\._tcp\.local:$/, "", inst)
+    if (match($0, /port [0-9]+/)) port = substr($0, RSTART + 5, RLENGTH - 5)
+}
+/\._airdrop\._tcp\.local: type TXT, flags=/ {
+    if (match($0, /flags=[0-9]+/)) flags = substr($0, RSTART + 6, RLENGTH - 6)
+}
+mac != "" && port != "" && inst != "" && flags != "" {
+    line = mac " " port " " inst " " flags
+    if (!(line in seen)) { seen[line] = 1; print line; fflush() }
+    mac = ""
+}
+    ' >>"$PEERS_FILE") &
+    CAPTURE_PIDS+=($!)
+}
+
+if [ "$MODE" != receive ]; then
+    command -v tshark >/dev/null || die "tshark not found (package wireshark-cli)"
+    watch_awdl_peers
+    [ "$BLE" = 1 ] && ble_start
+fi
+
 case "$MODE" in
     find)
         echo "== Looking for devices (Ctrl+C to stop)"
-        opendrop find
+        opendrop find --peers-file "$PEERS_FILE"
         ;;
     receive)
         echo "== Visible as \"$DEVICE_NAME\" (Ctrl+C to stop)"
@@ -251,7 +323,7 @@ case "$MODE" in
     send)
         file=$(realpath "$2")
         echo "== Looking for devices for $FIND_SECONDS s"
-        OPENDROP_TIMEOUT=$FIND_SECONDS opendrop find
+        OPENDROP_TIMEOUT=$FIND_SECONDS opendrop find --peers-file "$PEERS_FILE"
         echo "== Sending $file to device 0"
         opendrop send -r 0 -f "$file"
         ;;
